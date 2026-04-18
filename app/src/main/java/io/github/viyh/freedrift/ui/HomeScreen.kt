@@ -160,8 +160,9 @@ fun HomeScreen(
     val hasPlayback = state.current != null || state.sceneSession != null
     val showMini = hasPlayback || (state.lastSession != null && lastSessionName != null)
 
-    // Auto-close expanded player when nothing is playing anymore.
-    if (expandedPlayer && !hasPlayback) expandedPlayer = false
+    // Auto-close expanded player only when there's nothing to show at all
+    // (no active playback and no last session to resume).
+    if (expandedPlayer && !showMini) expandedPlayer = false
 
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
@@ -216,7 +217,7 @@ fun HomeScreen(
                         onStop = onStop,
                         onResumeLast = onResumeLastSession,
                         onOpenTimer = { timerDialogOpen = true },
-                        onExpand = { if (hasPlayback) expandedPlayer = true },
+                        onExpand = { expandedPlayer = true },
                     )
                     HorizontalDivider(
                         thickness = 2.dp,
@@ -304,10 +305,14 @@ fun HomeScreen(
                 onSetLayerVolume = onSetLayerVolume,
                 onSaveSceneLevels = onSaveSceneLevels,
                 onPause = onPause,
-                onResume = { state.current?.let(onPlay) },
+                onResume = {
+                    val current = state.current
+                    if (current != null) onPlay(current) else onResumeLastSession()
+                },
                 onStop = onStop,
                 onOpenTimer = { timerDialogOpen = true },
                 onClose = { expandedPlayer = false },
+                lastSessionName = lastSessionName,
             )
         }
     }
@@ -366,8 +371,7 @@ private fun MiniPlayer(
     val swipeThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
     val dragOffset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val swipeUp = Modifier.pointerInput(hasPlayback) {
-        if (!hasPlayback) return@pointerInput
+    val swipeUp = Modifier.pointerInput(Unit) {
         detectVerticalDragGestures(
             onVerticalDrag = { _, dy ->
                 scope.launch {
@@ -389,7 +393,7 @@ private fun MiniPlayer(
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        onClick = { if (hasPlayback) onExpand() },
+        onClick = { onExpand() },
         modifier = Modifier
             .fillMaxWidth()
             .offset { IntOffset(0, dragOffset.value.toInt()) }
@@ -1041,10 +1045,12 @@ private fun ExpandedPlayer(
     onStop: () -> Unit,
     onOpenTimer: () -> Unit,
     onClose: () -> Unit,
+    lastSessionName: String?,
 ) {
     val title = when {
         state.sceneSession != null -> state.sceneSession.scene.name
-        else -> state.current?.displayName ?: ""
+        state.current != null -> state.current.displayName
+        else -> lastSessionName.orEmpty()
     }
     val subtitle = when {
         state.sceneSession != null -> "${state.sceneSession.scene.layers.size} layers"
