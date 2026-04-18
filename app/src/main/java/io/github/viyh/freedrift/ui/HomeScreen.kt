@@ -357,10 +357,21 @@ private fun MiniPlayer(
         else -> null
     }
 
+    val swipeThresholdPx = with(LocalDensity.current) { 40.dp.toPx() }
+    val swipeUp = Modifier.pointerInput(hasPlayback) {
+        if (!hasPlayback) return@pointerInput
+        var dragTotal = 0f
+        detectVerticalDragGestures(
+            onDragStart = { dragTotal = 0f },
+            onVerticalDrag = { _, dy -> dragTotal += dy },
+            onDragEnd = { if (-dragTotal > swipeThresholdPx) onExpand() },
+        )
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         onClick = { if (hasPlayback) onExpand() },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(swipeUp),
     ) {
         Column {
             Row(
