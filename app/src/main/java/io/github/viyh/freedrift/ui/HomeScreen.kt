@@ -30,7 +30,7 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Timelapse
-import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
@@ -38,7 +38,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -93,11 +93,11 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
-enum class Tab(val label: String) {
-    SOUNDS("Sounds"),
-    SCENES("Scenes"),
-    PLAYLISTS("Playlists"),
-    SETTINGS("Settings"),
+enum class Tab(val label: String, val subtitle: String) {
+    SOUNDS("Sounds", "Individual sounds and loops"),
+    SCENES("Scenes", "Layered soundscapes"),
+    PLAYLISTS("Playlists", "Sequences of sounds and scenes"),
+    SETTINGS("Settings", "Preferences and info"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -187,7 +187,16 @@ fun HomeScreen(
         containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text(tab.label, fontWeight = FontWeight.Light) },
+                title = {
+                    Column {
+                        Text(tab.label, fontWeight = FontWeight.Light)
+                        Text(
+                            tab.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 actions = {
                     when (tab) {
                         Tab.SOUNDS -> IconButton(onClick = onPickSound) {
@@ -407,9 +416,11 @@ private fun MiniPlayer(
             if (state.timerEndsAt != null && state.timerTotalMs != null && state.timerTotalMs > 0) {
                 var remainingMs by remember { mutableIntStateOf(0) }
                 LaunchedEffect(state.timerEndsAt) {
-                    while (state.timerEndsAt != null) {
-                        remainingMs = (state.timerEndsAt - System.currentTimeMillis())
+                    val endsAt = state.timerEndsAt ?: return@LaunchedEffect
+                    while (true) {
+                        remainingMs = (endsAt - System.currentTimeMillis())
                             .coerceAtLeast(0L).toInt()
+                        if (remainingMs == 0) break
                         delay(500)
                     }
                 }
@@ -673,22 +684,22 @@ private fun ScenesTab(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        state.sceneSession?.let { ms ->
+        state.sceneSession?.let { session ->
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text(
-                        ms.scene.name,
+                        session.scene.name,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Spacer(Modifier.height(8.dp))
                     LayerSliderBank(
-                        layers = ms.scene.layers,
+                        layers = session.scene.layers,
                         editable = false,
-                        currentVolumes = ms.currentVolumes,
+                        currentVolumes = session.currentVolumes,
                         onVolumeChange = onSetLayerVolume,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -708,8 +719,8 @@ private fun ScenesTab(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 80.dp),
         ) {
-            items(scenes, key = { it.id }) { m ->
-                val isActive = state.sceneSession?.scene?.id == m.id
+            items(scenes, key = { it.id }) { scene ->
+                val isActive = state.sceneSession?.scene?.id == scene.id
                 Surface(
                     color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
                     else MaterialTheme.colorScheme.surface,
@@ -723,17 +734,17 @@ private fun ScenesTab(
                         Icon(Icons.Default.Tune, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.size(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(m.name, color = MaterialTheme.colorScheme.onBackground)
+                            Text(scene.name, color = MaterialTheme.colorScheme.onBackground)
                             Text(
-                                "${m.layers.size} layers",
+                                "${scene.layers.size} layers",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = { onEditScene(m) }) {
+                        IconButton(onClick = { onEditScene(scene) }) {
                             Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { onPlayScene(m) }) {
+                        IconButton(onClick = { onPlayScene(scene) }) {
                             Icon(Icons.Default.PlayArrow, "Play", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
@@ -773,7 +784,7 @@ private fun PlaylistsTab(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.PlaylistPlay, null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.name, color = MaterialTheme.colorScheme.onBackground)
@@ -1090,7 +1101,7 @@ private fun ExpandedPlayer(
             // Volume
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.VolumeDown,
+                    Icons.AutoMirrored.Filled.VolumeDown,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

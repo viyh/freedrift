@@ -27,8 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import io.github.viyh.freedrift.BuildConfig
 
-private const val APP_VERSION = "0.6"
+private val APP_VERSION = BuildConfig.VERSION_NAME
 private const val APP_AUTHOR = "Joe Richards"
 private const val APP_GITHUB = "https://github.com/viyh/freedrift"
 private const val APP_LICENSE = "GPL-3.0-or-later"

@@ -133,7 +133,6 @@ class PlaybackService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "onCreate")
         // Load persisted settings.
         crossfadeDuration = AppSettings.crossfadeSeconds(this).seconds
         fadeInDuration = AppSettings.fadeInSeconds(this).seconds
@@ -154,13 +153,13 @@ class PlaybackService : LifecycleService() {
         mediaSession = MediaSession.Builder(this, wrappedA).build()
     }
 
-    private fun buildPlayer(handleFocus: Boolean = false): ExoPlayer = ExoPlayer.Builder(this)
+    private fun buildPlayer(): ExoPlayer = ExoPlayer.Builder(this)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build(),
-            handleFocus,
+            false,
         )
         .setHandleAudioBecomingNoisy(false)
         .build()
@@ -208,7 +207,7 @@ class PlaybackService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "onDestroy")
+        abandonAudioFocus()
         fades.values.forEach { it.cancel() }
         fades.clear()
         intermittentJobs.values.forEach { it.cancel() }
@@ -216,9 +215,7 @@ class PlaybackService : LifecycleService() {
         soundSettingsForPlayer.clear()
         timerJob?.cancel()
         playlistJob?.cancel()
-        mediaSession?.run {
-            release()
-        }
+        mediaSession?.release()
         mediaSession = null
         playerA.release()
         playerB.release()
@@ -230,7 +227,6 @@ class PlaybackService : LifecycleService() {
     // --- Public control ---
 
     fun playSingle(source: SoundSource) {
-        Log.d(TAG, "playSingle(${source.id})")
         stopPlaylistScheduling()
         teardownScene()
         requestAudioFocus()
@@ -241,7 +237,6 @@ class PlaybackService : LifecycleService() {
     }
 
     fun playPlaylist(playlist: Playlist) {
-        Log.d(TAG, "playPlaylist(${playlist.name}, ${playlist.entries.size} entries)")
         if (playlist.entries.isEmpty()) return
         stopPlaylistScheduling()
         teardownScene()
@@ -465,7 +460,6 @@ class PlaybackService : LifecycleService() {
     }
 
     fun playScene(scene: Scene) {
-        Log.d(TAG, "playScene(${scene.name}, ${scene.layers.size} layers)")
         if (scene.layers.isEmpty()) return
         stopPlaylistScheduling()
         // Stop single/playlist players.
@@ -496,10 +490,10 @@ class PlaybackService : LifecycleService() {
         fades[players[layerIndex]]?.cancel()
         setLogicalVolume(players[layerIndex], v)
         _state.update {
-            val ms = it.sceneSession ?: return@update it
+            val session = it.sceneSession ?: return@update it
             it.copy(
-                sceneSession = ms.copy(
-                    currentVolumes = ms.currentVolumes.toMutableList().also { v2 ->
+                sceneSession = session.copy(
+                    currentVolumes = session.currentVolumes.toMutableList().also { v2 ->
                         if (layerIndex in v2.indices) v2[layerIndex] = v
                     }
                 )
@@ -508,14 +502,14 @@ class PlaybackService : LifecycleService() {
     }
 
     fun saveSceneLevels() {
-        val ms = _state.value.sceneSession ?: return
-        val updated = ms.scene.copy(
-            layers = ms.scene.layers.mapIndexed { i, l ->
-                l.copy(defaultVolume = ms.currentVolumes.getOrElse(i) { l.defaultVolume })
+        val session = _state.value.sceneSession ?: return
+        val updated = session.scene.copy(
+            layers = session.scene.layers.mapIndexed { i, l ->
+                l.copy(defaultVolume = session.currentVolumes.getOrElse(i) { l.defaultVolume })
             }
         )
         SceneRepository.upsert(this, updated)
-        _state.update { it.copy(sceneSession = ms.copy(scene = updated)) }
+        _state.update { it.copy(sceneSession = session.copy(scene = updated)) }
     }
 
     private fun teardownScene() {
@@ -750,8 +744,8 @@ class PlaybackService : LifecycleService() {
     fun pause() = pauseCurrentImmediate()
 
     private fun pauseCurrentImmediate() {
-        val ms = _state.value.sceneSession
-        if (ms != null && scenePlayers.isNotEmpty()) {
+        val session = _state.value.sceneSession
+        if (session != null && scenePlayers.isNotEmpty()) {
             _state.update { it.copy(isPlaying = false) }
             refreshNotification()
             scenePlayers.forEach { p ->
@@ -779,10 +773,10 @@ class PlaybackService : LifecycleService() {
         // lockscreen button briefly showed the wrong state). Otherwise resume resets
         // every layer's volume to 0 and fades up — an audible "restart".
         if (_state.value.isPlaying) return
-        val ms = _state.value.sceneSession
-        if (ms != null && scenePlayers.isNotEmpty()) {
+        val session = _state.value.sceneSession
+        if (session != null && scenePlayers.isNotEmpty()) {
             scenePlayers.forEachIndexed { i, p ->
-                val target = ms.currentVolumes.getOrElse(i) { 0f }
+                val target = session.currentVolumes.getOrElse(i) { 0f }
                 setLogicalVolume(p, 0f)
                 p.playWhenReady = true
                 fade(p, 0f, target, fadeInDuration)
@@ -959,7 +953,6 @@ class PlaybackService : LifecycleService() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
                 isForeground = true
-                Log.d(TAG, "promoted to foreground ok")
             } catch (e: Throwable) {
                 Log.e(TAG, "startForeground FAILED", e)
             }

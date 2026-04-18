@@ -50,12 +50,12 @@ object SceneRepository {
 
     fun save(context: Context, scenes: List<Scene>) {
         val arr = JSONArray()
-        scenes.forEach { m ->
+        scenes.forEach { scene ->
             val o = JSONObject()
-                .put("id", m.id)
-                .put("name", m.name)
+                .put("id", scene.id)
+                .put("name", scene.name)
             val layersArr = JSONArray()
-            m.layers.forEach { l ->
+            scene.layers.forEach { l ->
                 layersArr.put(
                     JSONObject()
                         .put("soundId", l.soundId)

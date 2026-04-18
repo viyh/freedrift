@@ -282,11 +282,11 @@ private fun AddEntryDialog(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (pickingScene) {
-                        items(availableScenes) { m ->
+                        items(availableScenes) { scene ->
                             PickRow(
-                                label = "${m.name}  ·  ${m.layers.size} layers",
-                                selected = selectedScene?.id == m.id,
-                                onClick = { selectedScene = m },
+                                label = "${scene.name}  ·  ${scene.layers.size} layers",
+                                selected = selectedScene?.id == scene.id,
+                                onClick = { selectedScene = scene },
                             )
                         }
                     } else {

@@ -63,13 +63,13 @@ class MainActivity : ComponentActivity() {
     private val _scenes = MutableStateFlow<List<Scene>>(emptyList())
     val scenes: StateFlow<List<Scene>> = _scenes.asStateFlow()
 
-    private val _crossfadeSec = MutableStateFlow(8)
+    private val _crossfadeSec = MutableStateFlow(0)
     val crossfadeSec: StateFlow<Int> = _crossfadeSec.asStateFlow()
 
-    private val _fadeInSec = MutableStateFlow(5)
+    private val _fadeInSec = MutableStateFlow(0)
     val fadeInSec: StateFlow<Int> = _fadeInSec.asStateFlow()
 
-    private val _timerFadeOutSec = MutableStateFlow(30)
+    private val _timerFadeOutSec = MutableStateFlow(0)
     val timerFadeOutSec: StateFlow<Int> = _timerFadeOutSec.asStateFlow()
 
     private val _soundSettings = MutableStateFlow<Map<String, SoundSettings>>(emptyMap())
@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                 val st by state.collectAsState()
                 val snd by sounds.collectAsState()
                 val pls by playlists.collectAsState()
-                val mxs by scenes.collectAsState()
+                val scn by scenes.collectAsState()
 
                 // Simple state-based navigation. Tab state lives here so editor round-trips preserve it.
                 var editor: EditorTarget? by remember { mutableStateOf(null) }
@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                     is EditorTarget.PlaylistEdit -> PlaylistEditorScreen(
                         initial = e.playlist,
                         availableSounds = snd,
-                        availableScenes = mxs,
+                        availableScenes = scn,
                         onSave = { p ->
                             PlaylistRepository.upsert(this, p)
                             reloadPlaylists()
@@ -142,8 +142,8 @@ class MainActivity : ComponentActivity() {
                     is EditorTarget.SceneEdit -> SceneEditorScreen(
                         initial = e.scene,
                         availableSounds = snd,
-                        onSave = { m ->
-                            SceneRepository.upsert(this, m)
+                        onSave = { scene ->
+                            SceneRepository.upsert(this, scene)
                             reloadScenes()
                             editor = null
                         },
@@ -158,13 +158,13 @@ class MainActivity : ComponentActivity() {
                         state = st,
                         sounds = snd,
                         playlists = pls,
-                        scenes = mxs,
+                        scenes = scn,
                         crossfadeSeconds = crossfadeSec.collectAsState().value,
                         fadeInSeconds = fadeInSec.collectAsState().value,
                         timerFadeOutSeconds = timerFadeOutSec.collectAsState().value,
                         appVolume = st.appVolume,
                         duckOnNotifications = st.duckOnNotifications,
-                        lastSessionName = resolveLastSessionName(st.lastSession, snd, pls, mxs),
+                        lastSessionName = resolveLastSessionName(st.lastSession, snd, pls, scn),
                         onResumeLastSession = { resumeLastSession(st.lastSession) },
                         onSetCrossfadeSeconds = { secs ->
                             service?.setCrossfadeSeconds(secs)
@@ -275,12 +275,12 @@ class MainActivity : ComponentActivity() {
                 src?.let { service?.playSingle(it) }
             }
             LastSessionRef.Kind.PLAYLIST -> {
-                val p = _playlists.value.firstOrNull { it.id == ref.targetId }
-                p?.let { service?.playPlaylist(it) }
+                _playlists.value.firstOrNull { it.id == ref.targetId }
+                    ?.let { service?.playPlaylist(it) }
             }
             LastSessionRef.Kind.SCENE -> {
-                val m = _scenes.value.firstOrNull { it.id == ref.targetId }
-                m?.let { service?.playScene(it) }
+                _scenes.value.firstOrNull { it.id == ref.targetId }
+                    ?.let { service?.playScene(it) }
             }
         }
     }

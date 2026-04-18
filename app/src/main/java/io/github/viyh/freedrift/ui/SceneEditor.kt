@@ -20,8 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -151,9 +151,10 @@ fun SceneEditorScreen(
                 TextButton(onClick = onCancel) { Text("Cancel") }
                 Button(
                     onClick = {
-                        val m = (initial ?: Scene(name = name.trim().ifBlank { "Untitled" }, layers = emptyList()))
-                            .copy(name = name.trim().ifBlank { "Untitled" }, layers = layers)
-                        onSave(m)
+                        val finalName = name.trim().ifBlank { "Untitled" }
+                        val scene = (initial ?: Scene(name = finalName, layers = emptyList()))
+                            .copy(name = finalName, layers = layers)
+                        onSave(scene)
                     },
                     enabled = layers.isNotEmpty() && name.isNotBlank(),
                 ) { Text("Save") }
@@ -250,7 +251,7 @@ private fun LayerColumn(
                 modifier = Modifier.size(28.dp),
             ) {
                 Icon(
-                    if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     contentDescription = if (isMuted) "Unmute" else "Mute",
                     tint = if (isMuted)
                         MaterialTheme.colorScheme.onSurfaceVariant
