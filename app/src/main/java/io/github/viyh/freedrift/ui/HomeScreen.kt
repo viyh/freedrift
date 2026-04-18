@@ -1055,113 +1055,133 @@ private fun ExpandedPlayer(
         modifier = Modifier.offset { IntOffset(0, dragOffsetY.toInt()) },
         containerColor = Color.Black,
         topBar = {
-            TopAppBar(
-                modifier = dragModifier,
-                title = { Text("Now playing", fontWeight = FontWeight.Light) },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(
-                            Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Collapse",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+            Column {
+                TopAppBar(
+                    modifier = dragModifier,
+                    title = { Text("Now playing", fontWeight = FontWeight.Light) },
+                    navigationIcon = {
+                        IconButton(onClick = onClose) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Collapse",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Black,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    )
                 )
-            )
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            }
         },
     ) { pad ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .padding(pad)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(pad),
         ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                // Live layer sliders for scenes; no track-position bar for single sounds
+                // (it would jump around with Continuous random-seek and look broken).
+                if (state.sceneSession != null) {
+                    LayerSliderBank(
+                        layers = state.sceneSession.scene.layers,
+                        editable = false,
+                        currentVolumes = state.sceneSession.currentVolumes,
+                        onVolumeChange = onSetLayerVolume,
+                    )
+                    TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
+                }
             }
 
-            // Live layer sliders for scenes; no track-position bar for single sounds
-            // (it would jump around with Continuous random-seek and look broken).
-            if (state.sceneSession != null) {
-                LayerSliderBank(
-                    layers = state.sceneSession.scene.layers,
-                    editable = false,
-                    currentVolumes = state.sceneSession.currentVolumes,
-                    onVolumeChange = onSetLayerVolume,
-                )
-                TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // Volume
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.AutoMirrored.Filled.VolumeDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = appVolume,
-                    onValueChange = onSetAppVolume,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "${(appVolume * 100).roundToInt()}%",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-
-            // Controls
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            HorizontalDivider(
+                thickness = 2.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                IconButton(onClick = onOpenTimer) {
-                    Icon(
-                        Icons.Default.Bedtime,
-                        contentDescription = "Sleep timer",
-                        tint = if (state.timerEndsAt != null)
-                            MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // Volume
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.VolumeDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Slider(
+                            value = appVolume,
+                            onValueChange = onSetAppVolume,
+                            valueRange = 0f..1f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "${(appVolume * 100).roundToInt()}%",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+
+                    // Controls
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        IconButton(onClick = onOpenTimer) {
+                            Icon(
+                                Icons.Default.Bedtime,
+                                contentDescription = "Sleep timer",
+                                tint = if (state.timerEndsAt != null)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = if (state.isPlaying) onPause else onResume) {
+                            Icon(
+                                if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (state.isPlaying) "Pause" else "Play",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
+                        IconButton(onClick = onStop) {
+                            Icon(
+                                Icons.Default.Stop,
+                                contentDescription = "Stop",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.size(48.dp)) // visual balance for the timer icon
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = if (state.isPlaying) onPause else onResume) {
-                    Icon(
-                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(40.dp),
-                    )
-                }
-                IconButton(onClick = onStop) {
-                    Icon(
-                        Icons.Default.Stop,
-                        contentDescription = "Stop",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp)) // visual balance for the timer icon
             }
         }
     }
