@@ -36,7 +36,12 @@ object StarterScenes {
     )
 
     fun seedIfNeeded(context: Context) {
-        if (AppSettings.startersSeeded(context)) return
+        // Seed when the flag is unset OR the scenes store is empty. The empty-store
+        // case catches migrations where the flag survived but the underlying prefs
+        // file didn't (e.g. the Mix -> Scene rename moved the prefs name).
+        val alreadySeeded = AppSettings.startersSeeded(context) &&
+            SceneRepository.load(context).isNotEmpty()
+        if (alreadySeeded) return
 
         // Per-sound default settings come from assets/sound_defaults.json.
         SoundDefaults.apply(context)
