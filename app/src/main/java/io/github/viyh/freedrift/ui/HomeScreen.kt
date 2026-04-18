@@ -223,7 +223,10 @@ fun HomeScreen(
         bottomBar = {
             Column {
                 if (showMini) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    HorizontalDivider(
+                        thickness = 2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                    )
                     MiniPlayer(
                         state = state,
                         lastSessionName = lastSessionName,
@@ -355,7 +358,7 @@ private fun MiniPlayer(
     }
 
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant,
         onClick = { if (hasPlayback) onExpand() },
         modifier = Modifier.fillMaxWidth(),
     ) {
