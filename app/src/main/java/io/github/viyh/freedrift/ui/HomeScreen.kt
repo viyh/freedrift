@@ -1,7 +1,11 @@
 package io.github.viyh.freedrift.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -159,30 +163,7 @@ fun HomeScreen(
     // Auto-close expanded player when nothing is playing anymore.
     if (expandedPlayer && !hasPlayback) expandedPlayer = false
 
-    if (expandedPlayer) {
-        ExpandedPlayer(
-            state = state,
-            appVolume = appVolume,
-            onSetAppVolume = onSetAppVolume,
-            onSetLayerVolume = onSetLayerVolume,
-            onSaveSceneLevels = onSaveSceneLevels,
-            onPause = onPause,
-            onResume = { state.current?.let(onPlay) },
-            onStop = onStop,
-            onOpenTimer = { timerDialogOpen = true },
-            onClose = { expandedPlayer = false },
-        )
-        if (timerDialogOpen) {
-            TimerDialog(
-                state = state,
-                onSetTimer = { onSetTimer(it); timerDialogOpen = false },
-                onCancelTimer = { onCancelTimer(); timerDialogOpen = false },
-                onDismiss = { timerDialogOpen = false },
-            )
-        }
-        return
-    }
-
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Color.Black,
         topBar = {
@@ -237,8 +218,13 @@ fun HomeScreen(
                         onOpenTimer = { timerDialogOpen = true },
                         onExpand = { if (hasPlayback) expandedPlayer = true },
                     )
+                    HorizontalDivider(
+                        thickness = 2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                    )
+                } else {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 NavigationBar(containerColor = Color.Black) {
                     Tab.values().forEach { t ->
                         NavigationBarItem(
@@ -306,6 +292,26 @@ fun HomeScreen(
         }
     }
 
+        AnimatedVisibility(
+            visible = expandedPlayer,
+            enter = slideInVertically(animationSpec = tween(220)) { it },
+            exit = slideOutVertically(animationSpec = tween(220)) { it },
+        ) {
+            ExpandedPlayer(
+                state = state,
+                appVolume = appVolume,
+                onSetAppVolume = onSetAppVolume,
+                onSetLayerVolume = onSetLayerVolume,
+                onSaveSceneLevels = onSaveSceneLevels,
+                onPause = onPause,
+                onResume = { state.current?.let(onPlay) },
+                onStop = onStop,
+                onOpenTimer = { timerDialogOpen = true },
+                onClose = { expandedPlayer = false },
+            )
+        }
+    }
+
     if (timerDialogOpen) {
         TimerDialog(
             state = state,
@@ -357,21 +363,37 @@ private fun MiniPlayer(
         else -> null
     }
 
-    val swipeThresholdPx = with(LocalDensity.current) { 40.dp.toPx() }
+    val swipeThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
+    val dragOffset = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     val swipeUp = Modifier.pointerInput(hasPlayback) {
         if (!hasPlayback) return@pointerInput
-        var dragTotal = 0f
         detectVerticalDragGestures(
-            onDragStart = { dragTotal = 0f },
-            onVerticalDrag = { _, dy -> dragTotal += dy },
-            onDragEnd = { if (-dragTotal > swipeThresholdPx) onExpand() },
+            onVerticalDrag = { _, dy ->
+                scope.launch {
+                    // Only track upward drag (negative dy); clamp so downward stays at 0.
+                    dragOffset.snapTo((dragOffset.value + dy).coerceAtMost(0f))
+                }
+            },
+            onDragEnd = {
+                if (-dragOffset.value > swipeThresholdPx) {
+                    onExpand()
+                    scope.launch { dragOffset.snapTo(0f) }
+                } else {
+                    scope.launch { dragOffset.animateTo(0f) }
+                }
+            },
+            onDragCancel = { scope.launch { dragOffset.animateTo(0f) } },
         )
     }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         onClick = { if (hasPlayback) onExpand() },
-        modifier = Modifier.fillMaxWidth().then(swipeUp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(0, dragOffset.value.toInt()) }
+            .then(swipeUp),
     ) {
         Column {
             Row(
