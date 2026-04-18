@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monochrome notification icon. Crescent moon + three sound-wave arcs, matching
+  the launcher but scaled to fill a 24x24 viewport. Android tints as a silhouette.
+
+  Geometry: launcher shape (108x108 viewport, content bounded 27..77 horizontal)
+  mapped with scale=0.44 centered at (52,54) -> (12,12), yielding ~1dp of
+  horizontal padding at the tightest edge and the moon/arcs spanning most of the
+  canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Crescent moon (tips at (10.7, 4.3) and (10.7, 19.7)) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 10.7,4.3 A 7.9,7.9 0 1,0 10.7,19.7 A 7.9,7.9 0 0,1 10.7,4.3 Z" />
+
+    <!-- Three concentric sound arcs radiating right -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 16.8,8.3 A 8.8,8.8   0 0,1 16.8,15.7
+                          M 19.0,6.7 A 11.4,11.4 0 0,1 19.0,17.3
+                          M 21.2,5.2 A 14.1,14.1 0 0,1 21.2,18.8" />
+</vector>

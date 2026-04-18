@@ -1,0 +1,4 @@
+{
+  "_comment": "Per-sound default playback settings. Seeded once on first launch (tracked by AppSettings.startersSeeded). Keys match the sound's display-name compareKey (lowercase alphanumeric only). Suffix a key with * for prefix match (e.g. 'owl*' matches owl1, owl4, etc.). User-modified settings are never overwritten.",
+  "owl*": { "mode": "intermittent", "minGapSec": 60 }
+}

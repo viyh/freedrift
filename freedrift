@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# freedrift - dev workflow wrapper. Everything runs in Docker.
+set -euo pipefail
+
+APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+PKG="io.github.viyh.freedrift"
+
+tools_up() {
+  if ! docker compose ps --services --filter "status=running" | grep -qx tools; then
+    docker compose up -d tools >/dev/null
+  fi
+}
+
+tools_exec() {
+  tools_up
+  docker compose exec tools "$@"
+}
+
+case "${1:-help}" in
+  build)
+    docker compose run --rm build
+    ;;
+  pair)
+    # usage: ./freedrift pair <host:port> <code>
+    tools_exec adb pair "$2" "$3"
+    ;;
+  connect)
+    # usage: ./freedrift connect <host:port>
+    tools_exec adb connect "$2"
+    ;;
+  devices)
+    tools_exec adb devices
+    ;;
+  install)
+    tools_exec adb install -r "$APK_PATH"
+    ;;
+  uninstall)
+    tools_exec adb uninstall "$PKG" || true
+    ;;
+  start)
+    tools_exec adb shell am start -n "$PKG/.MainActivity"
+    ;;
+  run)
+    docker compose run --rm build
+    tools_exec adb install -r "$APK_PATH"
+    tools_exec adb shell am start -n "$PKG/.MainActivity"
+    ;;
+  logcat)
+    # Show our own logs, Media3 session/notification, foreground service errors, crashes.
+    tools_exec adb logcat -v color \
+      FreeDrift:V \
+      MediaSession:V MediaSessionService:V MediaNotification:V MediaStyleNotificationHelper:V \
+      DefaultMediaNotificationProvider:V MediaController:V \
+      ExoPlayerImpl:W ExoPlayer:W \
+      ActivityManager:W ForegroundServiceController:V \
+      AndroidRuntime:E System.err:W \
+      "*:S"
+    ;;
+  logcat-all)
+    tools_exec adb logcat -v color
+    ;;
+  logcat-pid)
+    # All logs from the freedrift app process only.
+    pid=$(docker compose exec -T tools adb shell pidof "$PKG" | tr -d '\r\n')
+    if [ -z "$pid" ]; then
+      echo "App not running. Launch it first (./freedrift start)."
+      exit 1
+    fi
+    tools_exec adb logcat -v color --pid "$pid"
+    ;;
+  shell)
+    tools_exec bash
+    ;;
+  down)
+    docker compose down
+    ;;
+  clean)
+    docker compose run --rm build gradle --no-daemon clean
+    ;;
+  clean-assets)
+    # Re-wrap every audio file in assets/sounds/ to strip cover art / video
+    # streams and metadata, without re-encoding (audio is byte-for-byte preserved).
+    out_dir="$(cd "$(dirname "$0")" && pwd)/app/src/main/assets/sounds"
+    shopt -s nullglob
+    found=0
+    for f in "$out_dir"/*.ogg "$out_dir"/*.opus "$out_dir"/*.mp3 "$out_dir"/*.flac "$out_dir"/*.wav; do
+      name=$(basename "$f")
+      echo "  cleaning $name"
+      docker run --rm \
+        -v "$out_dir:/sounds" \
+        jrottenberg/ffmpeg:8.1-scratch \
+        -hide_banner -loglevel error \
+        -i "/sounds/$name" \
+        -vn \
+        -map_metadata -1 \
+        -c:a copy \
+        -y \
+        "/sounds/__cleaning__$name"
+      mv -f "$out_dir/__cleaning__$name" "$f"
+      found=$((found + 1))
+    done
+    shopt -u nullglob
+    echo "cleaned $found file(s)"
+    ;;
+  ffmpeg)
+    # usage: ./freedrift ffmpeg <args...>
+    # Mounts your $HOME at the same path so relative paths Just Work.
+    shift
+    docker run --rm -v "$HOME:$HOME" -w "$HOME" jrottenberg/ffmpeg:8.1-scratch "$@"
+    ;;
+  convert)
+    # usage: ./freedrift convert <input.wav> [output_name]
+    # Converts to OGG Vorbis q5 and drops it in app/src/main/assets/sounds/.
+    input="${2:-}"
+    if [ -z "$input" ]; then
+      echo "usage: ./freedrift convert <input.wav> [output_name_without_ext]"
+      exit 1
+    fi
+    if [[ "$input" != /* ]]; then
+      input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+    fi
+    base="${3:-}"
+    if [ -z "$base" ]; then
+      base="$(basename "$input")"
+      base="${base%.*}"
+    fi
+    out_dir="$(cd "$(dirname "$0")" && pwd)/app/src/main/assets/sounds"
+    mkdir -p "$out_dir"
+    docker run --rm \
+      -v "$input:/in/$(basename "$input"):ro" \
+      -v "$out_dir:/out" \
+      jrottenberg/ffmpeg:8.1-scratch \
+      -i "/in/$(basename "$input")" \
+      -vn \
+      -map_metadata -1 \
+      -c:a libvorbis -q:a 5 \
+      "/out/${base}.ogg"
+    echo "wrote $out_dir/${base}.ogg"
+    ;;
+  *)
+    cat <<EOF
+freedrift dev workflow
+
+Setup (once):
+  ./freedrift build                 build the Docker image and APK
+  ./freedrift pair HOST:PORT CODE   pair with your phone (Wireless Debugging)
+  ./freedrift connect HOST:PORT     connect to paired phone
+
+Daily:
+  ./freedrift run                   build + install + launch
+  ./freedrift build                 build APK only
+  ./freedrift install               install last-built APK
+  ./freedrift start                 launch app on device
+  ./freedrift logcat-all            stream EVERYTHING (noisy, for debugging)
+  ./freedrift logcat-pid            stream logs from the app process only
+
+Audio conversion:
+  ./freedrift convert <file> [name]   convert to OGG Vorbis q5, drop in assets/sounds/
+  ./freedrift clean-assets            strip cover art + metadata from existing assets/sounds/ files
+  ./freedrift ffmpeg <args...>        raw ffmpeg passthrough (mounts \$HOME)
+
+  ./freedrift logcat                stream filtered logs
+  ./freedrift devices               list connected devices
+  ./freedrift shell                 bash shell inside the tools container
+  ./freedrift uninstall             uninstall from device
+  ./freedrift clean                 gradle clean
+  ./freedrift down                  stop tools container
+EOF
+    ;;
+esac

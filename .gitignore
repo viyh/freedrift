@@ -1,0 +1,93 @@
+# ---- Project-specific ----
+
+# User-saved debug log captures (not part of project history)
+log.txt
+
+# Scratch/throwaway dirs
+.scratch-*/
+
+# Core dumps (e.g. adb fork-server crashes)
+core
+core.*
+
+# Keystore files: ignore all except the persisted debug keystore used by the
+# Docker build so signing stays stable across rebuilds.
+*.keystore
+*.jks
+!debug.keystore
+
+
+# ---- Android ----
+
+# Built application files
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Files for the ART/Dalvik VM
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Gradle
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Proguard folder
+proguard/
+
+# Android Studio / IntelliJ / Fleet
+*.iml
+.idea/
+.kotlin/
+.fleet/
+
+# Android Studio captures / navigation editor temp files
+captures/
+.navigation/
+
+# External native build
+.externalNativeBuild/
+.cxx/
+
+# Android profiling / memory dumps
+*.hprof
+
+# Lint
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+
+
+# ---- macOS ----
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk

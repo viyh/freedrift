@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FreeDrift</string>
+    <string name="channel_playback">Playback</string>
+    <string name="notif_playing">Playing</string>
+    <string name="notif_paused">Paused</string>
+</resources>
