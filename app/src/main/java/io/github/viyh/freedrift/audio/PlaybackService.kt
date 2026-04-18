@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
@@ -72,11 +73,13 @@ class PlaybackService : LifecycleService() {
     private var ducked = false
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        Log.d(TAG, "audioFocus onChange=$change duckOnNotifications=$duckOnNotifications isPlaying=${_state.value.isPlaying}")
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 // Full loss: always pause.
                 if (_state.value.isPlaying) {
+                    Log.d(TAG, "audioFocus LOSS -> pause")
                     pausedByFocus = true
                     pauseCurrentImmediate()
                 }
@@ -84,14 +87,17 @@ class PlaybackService : LifecycleService() {
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 // Notification-style interruption. User setting picks duck vs pause.
                 if (duckOnNotifications) {
+                    Log.d(TAG, "audioFocus CAN_DUCK -> duck")
                     ducked = true
                     applyVolumeScaling()
                 } else if (_state.value.isPlaying) {
+                    Log.d(TAG, "audioFocus CAN_DUCK -> pause (duck disabled)")
                     pausedByFocus = true
                     pauseCurrentImmediate()
                 }
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.d(TAG, "audioFocus GAIN (ducked=$ducked pausedByFocus=$pausedByFocus)")
                 if (ducked) {
                     ducked = false
                     applyVolumeScaling()
@@ -547,7 +553,9 @@ class PlaybackService : LifecycleService() {
             .build()
         audioFocusRequest = req
         val granted = audioManager.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        Log.d(TAG, "requestAudioFocus granted=$granted")
         if (!granted) Log.w(TAG, "audio focus not granted")
+        registerPlaybackCallback()
         return granted
     }
 
@@ -556,6 +564,78 @@ class PlaybackService : LifecycleService() {
         audioFocusRequest = null
         ducked = false
         pausedByFocus = false
+        unregisterPlaybackCallback()
+        externallyInterrupted = false
+    }
+
+    // --- External playback detection ---
+    //
+    // Some apps (e.g. Duolingo voice lines) play audio without requesting focus, so our
+    // OnAudioFocusChangeListener never fires and Android auto-ducks our MEDIA stream.
+    // AudioPlaybackCallback fires on any playback-config change system-wide, letting us
+    // react to those cases and apply the same duck-vs-pause policy as the focus path.
+
+    private var audioPlaybackCallback: AudioManager.AudioPlaybackCallback? = null
+    private var externallyInterrupted = false
+
+    private fun registerPlaybackCallback() {
+        if (audioPlaybackCallback != null) return
+        val cb = object : AudioManager.AudioPlaybackCallback() {
+            override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
+                handlePlaybackConfigChanged(configs)
+            }
+        }
+        audioPlaybackCallback = cb
+        audioManager.registerAudioPlaybackCallback(cb, null)
+    }
+
+    private fun unregisterPlaybackCallback() {
+        audioPlaybackCallback?.let { audioManager.unregisterAudioPlaybackCallback(it) }
+        audioPlaybackCallback = null
+    }
+
+    private fun externalPlaybackActive(configs: List<AudioPlaybackConfiguration>): Boolean {
+        // Any config whose attributes don't match ours (USAGE_MEDIA + CONTENT_TYPE_MUSIC)
+        // is definitely another app.
+        val distinctExternal = configs.any { c ->
+            val a = c.audioAttributes
+            a.usage != android.media.AudioAttributes.USAGE_MEDIA ||
+                a.contentType != android.media.AudioAttributes.CONTENT_TYPE_MUSIC
+        }
+        if (distinctExternal) return true
+        // If all configs match our attrs, fall back to a count check: anything beyond our
+        // own active players must be another media app.
+        val ourActive = listOf(playerA, playerB).count { it.playWhenReady } +
+            mixPlayers.count { it.playWhenReady }
+        return configs.size > ourActive
+    }
+
+    private fun handlePlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
+        val external = externalPlaybackActive(configs)
+        Log.d(TAG, "playbackConfig total=${configs.size} external=$external interrupted=$externallyInterrupted")
+        if (external && !externallyInterrupted) {
+            externallyInterrupted = true
+            if (duckOnNotifications) {
+                Log.d(TAG, "external playback -> duck")
+                ducked = true
+                applyVolumeScaling()
+            } else if (_state.value.isPlaying) {
+                Log.d(TAG, "external playback -> pause (duck disabled)")
+                pausedByFocus = true
+                pauseCurrentImmediate()
+            }
+        } else if (!external && externallyInterrupted) {
+            externallyInterrupted = false
+            Log.d(TAG, "external playback ended -> restore")
+            if (ducked) {
+                ducked = false
+                applyVolumeScaling()
+            }
+            if (pausedByFocus && _state.value.current != null) {
+                pausedByFocus = false
+                resumeCurrentWithFade()
+            }
+        }
     }
 
     // --- Logical-volume layer: all player.volume writes funnel through here so appVolume
