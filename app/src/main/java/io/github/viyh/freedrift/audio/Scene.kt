@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-data class Mix(
+data class Scene(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val layers: List<Layer>,
@@ -17,12 +17,12 @@ data class Layer(
     val defaultVolume: Float,
 )
 
-object MixRepository {
-    private const val PREFS = "mixes"
+object SceneRepository {
+    private const val PREFS = "scenes"
     private const val KEY = "data"
     const val MAX_LAYERS = 8
 
-    fun load(context: Context): List<Mix> {
+    fun load(context: Context): List<Scene> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null) ?: return emptyList()
         return try {
@@ -30,7 +30,7 @@ object MixRepository {
             List(arr.length()) { i ->
                 val o = arr.getJSONObject(i)
                 val layersArr = o.getJSONArray("layers")
-                Mix(
+                Scene(
                     id = o.getString("id"),
                     name = o.getString("name"),
                     layers = List(layersArr.length()) { j ->
@@ -48,9 +48,9 @@ object MixRepository {
         }
     }
 
-    fun save(context: Context, mixes: List<Mix>) {
+    fun save(context: Context, scenes: List<Scene>) {
         val arr = JSONArray()
-        mixes.forEach { m ->
+        scenes.forEach { m ->
             val o = JSONObject()
                 .put("id", m.id)
                 .put("name", m.name)
@@ -72,10 +72,10 @@ object MixRepository {
             .apply()
     }
 
-    fun upsert(context: Context, mix: Mix) {
+    fun upsert(context: Context, scene: Scene) {
         val list = load(context).toMutableList()
-        val idx = list.indexOfFirst { it.id == mix.id }
-        if (idx >= 0) list[idx] = mix else list.add(mix)
+        val idx = list.indexOfFirst { it.id == scene.id }
+        if (idx >= 0) list[idx] = scene else list.add(scene)
         save(context, list)
     }
 

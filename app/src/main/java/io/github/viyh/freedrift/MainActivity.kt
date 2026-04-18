@@ -25,8 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.viyh.freedrift.audio.LastSessionRef
-import io.github.viyh.freedrift.audio.Mix
-import io.github.viyh.freedrift.audio.MixRepository
+import io.github.viyh.freedrift.audio.Scene
+import io.github.viyh.freedrift.audio.SceneRepository
 import io.github.viyh.freedrift.audio.PlaybackService
 import io.github.viyh.freedrift.audio.PlaybackState
 import io.github.viyh.freedrift.audio.Playlist
@@ -35,10 +35,10 @@ import io.github.viyh.freedrift.audio.AppSettings
 import io.github.viyh.freedrift.audio.SoundLibrary
 import io.github.viyh.freedrift.audio.SoundSettings
 import io.github.viyh.freedrift.audio.SoundSettingsRepository
-import io.github.viyh.freedrift.audio.StarterMixes
+import io.github.viyh.freedrift.audio.StarterScenes
 import io.github.viyh.freedrift.audio.SoundSource
 import io.github.viyh.freedrift.ui.HomeScreen
-import io.github.viyh.freedrift.ui.MixEditorScreen
+import io.github.viyh.freedrift.ui.SceneEditorScreen
 import io.github.viyh.freedrift.ui.PlaylistEditorScreen
 import io.github.viyh.freedrift.ui.Tab
 import io.github.viyh.freedrift.ui.theme.FreeDriftTheme
@@ -60,8 +60,8 @@ class MainActivity : ComponentActivity() {
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists: StateFlow<List<Playlist>> = _playlists.asStateFlow()
 
-    private val _mixes = MutableStateFlow<List<Mix>>(emptyList())
-    val mixes: StateFlow<List<Mix>> = _mixes.asStateFlow()
+    private val _scenes = MutableStateFlow<List<Scene>>(emptyList())
+    val scenes: StateFlow<List<Scene>> = _scenes.asStateFlow()
 
     private val _crossfadeSec = MutableStateFlow(8)
     val crossfadeSec: StateFlow<Int> = _crossfadeSec.asStateFlow()
@@ -92,9 +92,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         reloadSounds()
-        StarterMixes.seedIfNeeded(this)
+        StarterScenes.seedIfNeeded(this)
         reloadPlaylists()
-        reloadMixes()
+        reloadScenes()
         _crossfadeSec.value = AppSettings.crossfadeSeconds(this)
         _fadeInSec.value = AppSettings.fadeInSeconds(this)
         _timerFadeOutSec.value = AppSettings.timerFadeOutSeconds(this)
@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                 val st by state.collectAsState()
                 val snd by sounds.collectAsState()
                 val pls by playlists.collectAsState()
-                val mxs by mixes.collectAsState()
+                val mxs by scenes.collectAsState()
 
                 // Simple state-based navigation. Tab state lives here so editor round-trips preserve it.
                 var editor: EditorTarget? by remember { mutableStateOf(null) }
@@ -113,10 +113,10 @@ class MainActivity : ComponentActivity() {
                 val tabHistory = remember { mutableStateListOf<Tab>() }
 
                 val smartDefaultTab: Tab = when {
-                    st.mixSession != null -> Tab.MIXES
+                    st.sceneSession != null -> Tab.SCENES
                     st.playlistSession != null -> Tab.PLAYLISTS
                     st.current != null -> Tab.SOUNDS
-                    st.lastSession?.kind == LastSessionRef.Kind.MIX -> Tab.MIXES
+                    st.lastSession?.kind == LastSessionRef.Kind.SCENE -> Tab.SCENES
                     st.lastSession?.kind == LastSessionRef.Kind.PLAYLIST -> Tab.PLAYLISTS
                     st.lastSession?.kind == LastSessionRef.Kind.SOUND -> Tab.SOUNDS
                     else -> Tab.SOUNDS
@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                     is EditorTarget.PlaylistEdit -> PlaylistEditorScreen(
                         initial = e.playlist,
                         availableSounds = snd,
-                        availableMixes = mxs,
+                        availableScenes = mxs,
                         onSave = { p ->
                             PlaylistRepository.upsert(this, p)
                             reloadPlaylists()
@@ -139,18 +139,18 @@ class MainActivity : ComponentActivity() {
                             editor = null
                         },
                     )
-                    is EditorTarget.MixEdit -> MixEditorScreen(
-                        initial = e.mix,
+                    is EditorTarget.SceneEdit -> SceneEditorScreen(
+                        initial = e.scene,
                         availableSounds = snd,
                         onSave = { m ->
-                            MixRepository.upsert(this, m)
-                            reloadMixes()
+                            SceneRepository.upsert(this, m)
+                            reloadScenes()
                             editor = null
                         },
                         onCancel = { editor = null },
                         onDelete = { id ->
-                            MixRepository.delete(this, id)
-                            reloadMixes()
+                            SceneRepository.delete(this, id)
+                            reloadScenes()
                             editor = null
                         },
                     )
@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                         state = st,
                         sounds = snd,
                         playlists = pls,
-                        mixes = mxs,
+                        scenes = mxs,
                         crossfadeSeconds = crossfadeSec.collectAsState().value,
                         fadeInSeconds = fadeInSec.collectAsState().value,
                         timerFadeOutSeconds = timerFadeOutSec.collectAsState().value,
@@ -196,19 +196,19 @@ class MainActivity : ComponentActivity() {
                         },
                         onEditPlaylist = { editor = EditorTarget.PlaylistEdit(it) },
                         onNewPlaylist = { editor = EditorTarget.PlaylistEdit(null) },
-                        onPlayMix = { mix ->
+                        onPlayScene = { scene ->
                             ContextCompat.startForegroundService(
                                 this,
                                 Intent(this, PlaybackService::class.java)
                             )
-                            service?.playMix(mix)
+                            service?.playScene(scene)
                         },
-                        onEditMix = { editor = EditorTarget.MixEdit(it) },
-                        onNewMix = { editor = EditorTarget.MixEdit(null) },
+                        onEditScene = { editor = EditorTarget.SceneEdit(it) },
+                        onNewScene = { editor = EditorTarget.SceneEdit(null) },
                         onSetLayerVolume = { idx, v -> service?.setLayerVolume(idx, v) },
-                        onSaveMixLevels = {
-                            service?.saveMixLevels()
-                            reloadMixes()
+                        onSaveSceneLevels = {
+                            service?.saveSceneLevels()
+                            reloadScenes()
                         },
                         onPause = { service?.pause() },
                         onStop = { service?.stop() },
@@ -254,13 +254,13 @@ class MainActivity : ComponentActivity() {
         ref: LastSessionRef?,
         sounds: List<SoundSource>,
         playlists: List<Playlist>,
-        mixes: List<Mix>,
+        scenes: List<Scene>,
     ): String? {
         if (ref == null) return null
         return when (ref.kind) {
             LastSessionRef.Kind.SOUND -> sounds.firstOrNull { it.id == ref.targetId }?.displayName
             LastSessionRef.Kind.PLAYLIST -> playlists.firstOrNull { it.id == ref.targetId }?.name
-            LastSessionRef.Kind.MIX -> mixes.firstOrNull { it.id == ref.targetId }?.name
+            LastSessionRef.Kind.SCENE -> scenes.firstOrNull { it.id == ref.targetId }?.name
         }
     }
 
@@ -278,9 +278,9 @@ class MainActivity : ComponentActivity() {
                 val p = _playlists.value.firstOrNull { it.id == ref.targetId }
                 p?.let { service?.playPlaylist(it) }
             }
-            LastSessionRef.Kind.MIX -> {
-                val m = _mixes.value.firstOrNull { it.id == ref.targetId }
-                m?.let { service?.playMix(it) }
+            LastSessionRef.Kind.SCENE -> {
+                val m = _scenes.value.firstOrNull { it.id == ref.targetId }
+                m?.let { service?.playScene(it) }
             }
         }
     }
@@ -353,12 +353,12 @@ class MainActivity : ComponentActivity() {
         _playlists.value = PlaylistRepository.load(this)
     }
 
-    private fun reloadMixes() {
-        _mixes.value = MixRepository.load(this)
+    private fun reloadScenes() {
+        _scenes.value = SceneRepository.load(this)
     }
 }
 
 private sealed interface EditorTarget {
     data class PlaylistEdit(val playlist: Playlist?) : EditorTarget
-    data class MixEdit(val mix: Mix?) : EditorTarget
+    data class SceneEdit(val scene: Scene?) : EditorTarget
 }

@@ -81,7 +81,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.viyh.freedrift.audio.Mix
+import io.github.viyh.freedrift.audio.Scene
 import io.github.viyh.freedrift.audio.PlaybackState
 import io.github.viyh.freedrift.audio.Playlist
 import io.github.viyh.freedrift.audio.SoundSettings
@@ -95,7 +95,7 @@ import kotlin.time.Duration.Companion.minutes
 
 enum class Tab(val label: String) {
     SOUNDS("Sounds"),
-    MIXES("Mixes"),
+    SCENES("Scenes"),
     PLAYLISTS("Playlists"),
     SETTINGS("Settings"),
 }
@@ -106,7 +106,7 @@ fun HomeScreen(
     state: PlaybackState,
     sounds: List<SoundSource>,
     playlists: List<Playlist>,
-    mixes: List<Mix>,
+    scenes: List<Scene>,
     crossfadeSeconds: Int,
     fadeInSeconds: Int,
     timerFadeOutSeconds: Int,
@@ -123,11 +123,11 @@ fun HomeScreen(
     onPlayPlaylist: (Playlist) -> Unit,
     onEditPlaylist: (Playlist) -> Unit,
     onNewPlaylist: () -> Unit,
-    onPlayMix: (Mix) -> Unit,
-    onEditMix: (Mix) -> Unit,
-    onNewMix: () -> Unit,
+    onPlayScene: (Scene) -> Unit,
+    onEditScene: (Scene) -> Unit,
+    onNewScene: () -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
-    onSaveMixLevels: () -> Unit,
+    onSaveSceneLevels: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
     onSetTimer: (Duration) -> Unit,
@@ -153,7 +153,7 @@ fun HomeScreen(
         if (canGoBack) onBack()
     }
 
-    val hasPlayback = state.current != null || state.mixSession != null
+    val hasPlayback = state.current != null || state.sceneSession != null
     val showMini = hasPlayback || (state.lastSession != null && lastSessionName != null)
 
     // Auto-close expanded player when nothing is playing anymore.
@@ -165,7 +165,7 @@ fun HomeScreen(
             appVolume = appVolume,
             onSetAppVolume = onSetAppVolume,
             onSetLayerVolume = onSetLayerVolume,
-            onSaveMixLevels = onSaveMixLevels,
+            onSaveSceneLevels = onSaveSceneLevels,
             onPause = onPause,
             onResume = { state.current?.let(onPlay) },
             onStop = onStop,
@@ -193,8 +193,8 @@ fun HomeScreen(
                         Tab.SOUNDS -> IconButton(onClick = onPickSound) {
                             Icon(Icons.Default.Add, "Add sound", tint = MaterialTheme.colorScheme.primary)
                         }
-                        Tab.MIXES -> IconButton(onClick = onNewMix) {
-                            Icon(Icons.Default.Add, "New mix", tint = MaterialTheme.colorScheme.primary)
+                        Tab.SCENES -> IconButton(onClick = onNewScene) {
+                            Icon(Icons.Default.Add, "New scene", tint = MaterialTheme.colorScheme.primary)
                         }
                         Tab.PLAYLISTS -> IconButton(onClick = onNewPlaylist) {
                             Icon(Icons.Default.Add, "New playlist", tint = MaterialTheme.colorScheme.primary)
@@ -258,13 +258,13 @@ fun HomeScreen(
                     soundSettings = soundSettings,
                     onSetSoundSettings = onSetSoundSettings,
                 )
-                Tab.MIXES -> MixesTab(
-                    mixes = mixes,
+                Tab.SCENES -> ScenesTab(
+                    scenes = scenes,
                     state = state,
-                    onPlayMix = onPlayMix,
-                    onEditMix = onEditMix,
+                    onPlayScene = onPlayScene,
+                    onEditScene = onEditScene,
                     onSetLayerVolume = onSetLayerVolume,
-                    onSaveMixLevels = onSaveMixLevels,
+                    onSaveSceneLevels = onSaveSceneLevels,
                 )
                 Tab.PLAYLISTS -> PlaylistsTab(
                     playlists = playlists,
@@ -308,7 +308,7 @@ fun HomeScreen(
 
 private fun iconFor(t: Tab) = when (t) {
     Tab.SOUNDS -> Icons.Default.MusicNote
-    Tab.MIXES -> Icons.Default.GraphicEq
+    Tab.SCENES -> Icons.Default.GraphicEq
     Tab.PLAYLISTS -> Icons.Default.LibraryMusic
     Tab.SETTINGS -> Icons.Default.Settings
 }
@@ -326,15 +326,15 @@ private fun MiniPlayer(
     onOpenTimer: () -> Unit,
     onExpand: () -> Unit,
 ) {
-    val hasPlayback = state.current != null || state.mixSession != null
+    val hasPlayback = state.current != null || state.sceneSession != null
     val title = when {
-        state.mixSession != null -> state.mixSession.mix.name
+        state.sceneSession != null -> state.sceneSession.scene.name
         state.current != null -> state.current.displayName
         lastSessionName != null -> lastSessionName
         else -> ""
     }
     val subtitle = when {
-        state.mixSession != null -> "${state.mixSession.mix.layers.size} layers"
+        state.sceneSession != null -> "${state.sceneSession.scene.layers.size} layers"
         state.playlistSession != null ->
             "${state.playlistSession.playlist.name} · ${state.playlistSession.currentIndex + 1} of ${state.playlistSession.playlist.entries.size}"
         !hasPlayback && lastSessionName != null -> "Last played"
@@ -656,16 +656,16 @@ private fun formatSeconds(s: Int): String {
     }
 }
 
-// ---------- Mixes tab ----------
+// ---------- Scenes tab ----------
 
 @Composable
-private fun MixesTab(
-    mixes: List<Mix>,
+private fun ScenesTab(
+    scenes: List<Scene>,
     state: PlaybackState,
-    onPlayMix: (Mix) -> Unit,
-    onEditMix: (Mix) -> Unit,
+    onPlayScene: (Scene) -> Unit,
+    onEditScene: (Scene) -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
-    onSaveMixLevels: () -> Unit,
+    onSaveSceneLevels: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -673,34 +673,34 @@ private fun MixesTab(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        state.mixSession?.let { ms ->
+        state.sceneSession?.let { ms ->
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text(
-                        ms.mix.name,
+                        ms.scene.name,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Spacer(Modifier.height(8.dp))
                     LayerSliderBank(
-                        layers = ms.mix.layers,
+                        layers = ms.scene.layers,
                         editable = false,
                         currentVolumes = ms.currentVolumes,
                         onVolumeChange = onSetLayerVolume,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row {
-                        TextButton(onClick = onSaveMixLevels) { Text("Save current levels as default") }
+                        TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
                     }
                 }
             }
         }
 
-        if (mixes.isEmpty()) {
-            EmptyState("No mixes yet.\nA mix is a layered bundle of sounds — rain, wind, distant thunder, etc. — each with its own volume. Tap + to build one.")
+        if (scenes.isEmpty()) {
+            EmptyState("No scenes yet.\nA scene is a layered bundle of sounds — rain, wind, distant thunder, etc. — each with its own volume. Tap + to build one.")
             return
         }
 
@@ -708,8 +708,8 @@ private fun MixesTab(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 80.dp),
         ) {
-            items(mixes, key = { it.id }) { m ->
-                val isActive = state.mixSession?.mix?.id == m.id
+            items(scenes, key = { it.id }) { m ->
+                val isActive = state.sceneSession?.scene?.id == m.id
                 Surface(
                     color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
                     else MaterialTheme.colorScheme.surface,
@@ -730,10 +730,10 @@ private fun MixesTab(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = { onEditMix(m) }) {
+                        IconButton(onClick = { onEditScene(m) }) {
                             Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { onPlayMix(m) }) {
+                        IconButton(onClick = { onPlayScene(m) }) {
                             Icon(Icons.Default.PlayArrow, "Play", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
@@ -984,7 +984,7 @@ private fun ExpandedPlayer(
     appVolume: Float,
     onSetAppVolume: (Float) -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
-    onSaveMixLevels: () -> Unit,
+    onSaveSceneLevels: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
@@ -992,11 +992,11 @@ private fun ExpandedPlayer(
     onClose: () -> Unit,
 ) {
     val title = when {
-        state.mixSession != null -> state.mixSession.mix.name
+        state.sceneSession != null -> state.sceneSession.scene.name
         else -> state.current?.displayName ?: ""
     }
     val subtitle = when {
-        state.mixSession != null -> "${state.mixSession.mix.layers.size} layers"
+        state.sceneSession != null -> "${state.sceneSession.scene.layers.size} layers"
         state.playlistSession != null ->
             "${state.playlistSession.playlist.name} · ${state.playlistSession.currentIndex + 1} of ${state.playlistSession.playlist.entries.size}"
         else -> null
@@ -1073,16 +1073,16 @@ private fun ExpandedPlayer(
                 )
             }
 
-            // Live layer sliders for mixes; no track-position bar for single sounds
+            // Live layer sliders for scenes; no track-position bar for single sounds
             // (it would jump around with Continuous random-seek and look broken).
-            if (state.mixSession != null) {
+            if (state.sceneSession != null) {
                 LayerSliderBank(
-                    layers = state.mixSession.mix.layers,
+                    layers = state.sceneSession.scene.layers,
                     editable = false,
-                    currentVolumes = state.mixSession.currentVolumes,
+                    currentVolumes = state.sceneSession.currentVolumes,
                     onVolumeChange = onSetLayerVolume,
                 )
-                TextButton(onClick = onSaveMixLevels) { Text("Save current levels as default") }
+                TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
             }
 
             Spacer(Modifier.weight(1f))

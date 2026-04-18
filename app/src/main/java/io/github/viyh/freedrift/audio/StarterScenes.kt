@@ -3,14 +3,14 @@ package io.github.viyh.freedrift.audio
 import android.content.Context
 
 /**
- * Ships a small set of curated mixes. Seeded on first launch (or any launch where
+ * Ships a small set of curated scenes. Seeded on first launch (or any launch where
  * the seeded-flag is still false). Matches desired sounds by normalized compare key,
  * falling back to startsWith so "oceanwaves" finds "Ocean Waves At Seal Rock OR".
  *
  * Any layer whose sound isn't present in the library is skipped; if all layers are
- * missing, the mix is skipped entirely. So partial asset sets produce partial starters.
+ * missing, the scene is skipped entirely. So partial asset sets produce partial starters.
  */
-object StarterMixes {
+object StarterScenes {
 
     private data class Spec(val name: String, val layers: List<LayerSpec>)
     private data class LayerSpec(val key: String, val volume: Float)
@@ -43,7 +43,7 @@ object StarterMixes {
 
         val library = SoundLibrary.all(context)
 
-        // Seed starter mixes.
+        // Seed starter scenes.
         specs.forEach { spec ->
             val layers = spec.layers.mapNotNull { ls ->
                 val match = findSound(library, ls.key) ?: return@mapNotNull null
@@ -54,7 +54,7 @@ object StarterMixes {
                 )
             }
             if (layers.isNotEmpty()) {
-                MixRepository.upsert(context, Mix(name = spec.name, layers = layers))
+                SceneRepository.upsert(context, Scene(name = spec.name, layers = layers))
             }
         }
         AppSettings.setStartersSeeded(context, true)

@@ -47,15 +47,15 @@ Other commands: `./freedrift build`, `./freedrift install`, `./freedrift start`,
 - Foreground playback service (survives screen lock, hours-long playback)
 - Lockscreen + notification media controls via Media3 MediaSession; play/pause from lockscreen respects fade
 - Bundled sounds from `assets/sounds/` + user-added via system file picker
-- Bottom-tab UI: **Sounds / Mixes / Playlists / Settings**, with a persistent mini-player above the tabs
-- **Expanded now-playing view** — tap the mini-player for a full view with larger controls, track progress (or live mix sliders), app-volume slider, and sleep-timer access
+- Bottom-tab UI: **Sounds / Scenes / Playlists / Settings**, with a persistent mini-player above the tabs
+- **Expanded now-playing view** — tap the mini-player for a full view with larger controls, track progress (or live scene sliders), app-volume slider, and sleep-timer access
 - **Resume last session** — mini-player keeps the last thing you played visible after stopping; tap play to resume
 - **Sleep-timer presets** (15/30/60/90 min) plus the full slider in the timer dialog
 - Immediate pause/stop on user button press; fade-out reserved for sleep-timer expiry
 - Fade-in on play/resume
 - Track-position + sleep-timer progress indicators
-- **Playlists** with per-track duration and crossfade. **Entries can be sounds or mixes.** Sound→sound uses a true shared-player crossfade; anything involving a mix uses a parallel fade-out + fade-in with separate player pools.
-- **Mixes** — up to 8 simultaneous looping layers, each with its own vertical volume slider. Saved as named presets. Tweak levels live while playing. Service-managed audio focus so all layers coexist (no focus stealing within the app).
+- **Playlists** with per-track duration and crossfade. **Entries can be sounds or scenes.** Sound→sound uses a true shared-player crossfade; anything involving a scene uses a parallel fade-out + fade-in with separate player pools.
+- **Scenes** — up to 8 simultaneous looping layers, each with its own vertical volume slider. Saved as named presets. Tweak levels live while playing. Service-managed audio focus so all layers coexist (no focus stealing within the app).
 - **App-level volume** — master multiplier separate from system volume, adjustable in Settings and the expanded player
 - **Duck-during-notifications** toggle (Settings) — default off (pause); on ducks to 40%
 - Configurable fade-in, crossfade, and sleep-timer fade-out durations
@@ -65,7 +65,7 @@ Other commands: `./freedrift build`, `./freedrift install`, `./freedrift start`,
 
 ## Not yet (roadmap)
 
-- Drag-to-reorder entries in the playlist / mix editors (currently up/down buttons)
+- Drag-to-reorder entries in the playlist / scene editors (currently up/down buttons)
 - Screen-dim-while-playing
 
 ## Project layout

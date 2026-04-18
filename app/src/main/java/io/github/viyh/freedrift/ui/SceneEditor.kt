@@ -54,17 +54,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import io.github.viyh.freedrift.audio.Layer
-import io.github.viyh.freedrift.audio.Mix
-import io.github.viyh.freedrift.audio.MixRepository
+import io.github.viyh.freedrift.audio.Scene
+import io.github.viyh.freedrift.audio.SceneRepository
 import io.github.viyh.freedrift.audio.SoundSource
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MixEditorScreen(
-    initial: Mix?,
+fun SceneEditorScreen(
+    initial: Scene?,
     availableSounds: List<SoundSource>,
-    onSave: (Mix) -> Unit,
+    onSave: (Scene) -> Unit,
     onCancel: () -> Unit,
     onDelete: ((String) -> Unit)? = null,
 ) {
@@ -78,7 +78,7 @@ fun MixEditorScreen(
         containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text(if (initial == null) "New mix" else "Edit mix") },
+                title = { Text(if (initial == null) "New scene" else "Edit scene") },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
                         Icon(Icons.Default.Close, "Cancel", tint = MaterialTheme.colorScheme.onBackground)
@@ -108,18 +108,18 @@ fun MixEditorScreen(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Layers (${layers.size}/${MixRepository.MAX_LAYERS})",
+                Text("Layers (${layers.size}/${SceneRepository.MAX_LAYERS})",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f))
                 TextButton(
                     onClick = { showAdd = true },
-                    enabled = layers.size < MixRepository.MAX_LAYERS,
+                    enabled = layers.size < SceneRepository.MAX_LAYERS,
                 ) { Text("+ Add layer") }
             }
 
             if (layers.isEmpty()) {
                 Text(
-                    "No layers yet. Tap + Add layer to build your mix — rain, wind, thunder, birds, whatever you want combined.",
+                    "No layers yet. Tap + Add layer to build your scene — rain, wind, thunder, birds, whatever you want combined.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -151,7 +151,7 @@ fun MixEditorScreen(
                 TextButton(onClick = onCancel) { Text("Cancel") }
                 Button(
                     onClick = {
-                        val m = (initial ?: Mix(name = name.trim().ifBlank { "Untitled" }, layers = emptyList()))
+                        val m = (initial ?: Scene(name = name.trim().ifBlank { "Untitled" }, layers = emptyList()))
                             .copy(name = name.trim().ifBlank { "Untitled" }, layers = layers)
                         onSave(m)
                     },

@@ -54,7 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.viyh.freedrift.audio.Playlist
-import io.github.viyh.freedrift.audio.Mix
+import io.github.viyh.freedrift.audio.Scene
 import io.github.viyh.freedrift.audio.PlaylistEntry
 import io.github.viyh.freedrift.audio.SoundSource
 
@@ -63,7 +63,7 @@ import io.github.viyh.freedrift.audio.SoundSource
 fun PlaylistEditorScreen(
     initial: Playlist?,
     availableSounds: List<SoundSource>,
-    availableMixes: List<Mix>,
+    availableScenes: List<Scene>,
     onSave: (Playlist) -> Unit,
     onCancel: () -> Unit,
     onDelete: ((String) -> Unit)? = null,
@@ -176,7 +176,7 @@ fun PlaylistEditorScreen(
         if (showAdd) {
             AddEntryDialog(
                 availableSounds = availableSounds,
-                availableMixes = availableMixes,
+                availableScenes = availableScenes,
                 onCancel = { showAdd = false },
                 onAddSound = { source, minutes ->
                     entries = entries + PlaylistEntry(
@@ -186,10 +186,10 @@ fun PlaylistEditorScreen(
                     )
                     showAdd = false
                 },
-                onAddMix = { mix, minutes ->
+                onAddScene = { scene, minutes ->
                     entries = entries + PlaylistEntry(
-                        soundId = "mix:${mix.id}",
-                        displayName = mix.name,
+                        soundId = "scene:${scene.id}",
+                        displayName = scene.name,
                         durationMinutes = minutes,
                     )
                     showAdd = false
@@ -251,14 +251,14 @@ private fun EntryRow(
 @Composable
 private fun AddEntryDialog(
     availableSounds: List<SoundSource>,
-    availableMixes: List<Mix>,
+    availableScenes: List<Scene>,
     onCancel: () -> Unit,
     onAddSound: (SoundSource, Int) -> Unit,
-    onAddMix: (Mix, Int) -> Unit,
+    onAddScene: (Scene, Int) -> Unit,
 ) {
-    var pickingMix by remember { mutableStateOf(false) }
+    var pickingScene by remember { mutableStateOf(false) }
     var selectedSound: SoundSource? by remember { mutableStateOf(null) }
-    var selectedMix: Mix? by remember { mutableStateOf(null) }
+    var selectedScene: Scene? by remember { mutableStateOf(null) }
     var durationText by remember { mutableStateOf("30") }
 
     AlertDialog(
@@ -266,14 +266,14 @@ private fun AddEntryDialog(
         title = { Text("Add entry") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Segmented picker: Sound vs Mix
+                // Segmented picker: Sound vs Scene
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    KindChip("Sound", selected = !pickingMix) {
-                        pickingMix = false
-                        selectedMix = null
+                    KindChip("Sound", selected = !pickingScene) {
+                        pickingScene = false
+                        selectedScene = null
                     }
-                    KindChip("Mix", selected = pickingMix, enabled = availableMixes.isNotEmpty()) {
-                        pickingMix = true
+                    KindChip("Scene", selected = pickingScene, enabled = availableScenes.isNotEmpty()) {
+                        pickingScene = true
                         selectedSound = null
                     }
                 }
@@ -281,12 +281,12 @@ private fun AddEntryDialog(
                     modifier = Modifier.height(220.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    if (pickingMix) {
-                        items(availableMixes) { m ->
+                    if (pickingScene) {
+                        items(availableScenes) { m ->
                             PickRow(
                                 label = "${m.name}  ·  ${m.layers.size} layers",
-                                selected = selectedMix?.id == m.id,
-                                onClick = { selectedMix = m },
+                                selected = selectedScene?.id == m.id,
+                                onClick = { selectedScene = m },
                             )
                         }
                     } else {
@@ -313,10 +313,10 @@ private fun AddEntryDialog(
         },
         confirmButton = {
             val dur = durationText.toIntOrNull() ?: 0
-            val canAdd = dur > 0 && ((pickingMix && selectedMix != null) || (!pickingMix && selectedSound != null))
+            val canAdd = dur > 0 && ((pickingScene && selectedScene != null) || (!pickingScene && selectedSound != null))
             Button(
                 onClick = {
-                    if (pickingMix) selectedMix?.let { onAddMix(it, dur) }
+                    if (pickingScene) selectedScene?.let { onAddScene(it, dur) }
                     else selectedSound?.let { onAddSound(it, dur) }
                 },
                 enabled = canAdd,

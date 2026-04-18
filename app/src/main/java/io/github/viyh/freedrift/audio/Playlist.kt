@@ -15,21 +15,21 @@ data class Playlist(
 }
 
 data class PlaylistEntry(
-    /** "asset:...", "user:<uri>", or "mix:<mixId>". Generic target id. */
+    /** "asset:...", "user:<uri>", or "scene:<sceneId>". Generic target id. */
     val soundId: String,
     /** Cached so the entry still shows something if the source vanishes. */
     val displayName: String,
     val durationMinutes: Int,
 ) {
-    val isMix: Boolean get() = soundId.startsWith("mix:")
-    val mixId: String? get() = if (isMix) soundId.removePrefix("mix:") else null
+    val isScene: Boolean get() = soundId.startsWith("scene:")
+    val sceneId: String? get() = if (isScene) soundId.removePrefix("scene:") else null
 }
 
 fun resolveSoundSource(context: Context, soundId: String): SoundSource? {
     // Exact match on the disambiguated library.
     SoundLibrary.all(context).firstOrNull { it.id == soundId }?.let { return it }
     // Fall back to a minimal placeholder if the source has been removed — keeps playlist
-    // entries and saved mixes functional but with a sentinel display name.
+    // entries and saved scenes functional but with a sentinel display name.
     return when {
         soundId.startsWith("asset:") ->
             SoundSource.Asset(soundId.removePrefix("asset:"), "(missing sound)")

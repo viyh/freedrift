@@ -64,7 +64,7 @@ object AppSettings {
         prefs(c).edit().putBoolean(KEY_DUCK_ON_NOTIFICATIONS, v).apply()
     }
 
-    /** Serialized "kind:targetId" e.g. "sound:asset:rain.ogg", "playlist:<uuid>", "mix:<uuid>". */
+    /** Serialized "kind:targetId" e.g. "sound:asset:rain.ogg", "playlist:<uuid>", "scene:<uuid>". */
     fun lastSession(c: Context): LastSessionRef? {
         val raw = prefs(c).getString(KEY_LAST_SESSION, null) ?: return null
         val parts = raw.split(":", limit = 2)
@@ -72,7 +72,7 @@ object AppSettings {
         val kind = when (parts[0]) {
             "sound" -> LastSessionRef.Kind.SOUND
             "playlist" -> LastSessionRef.Kind.PLAYLIST
-            "mix" -> LastSessionRef.Kind.MIX
+            "scene" -> LastSessionRef.Kind.SCENE
             else -> return null
         }
         return LastSessionRef(kind, parts[1])
@@ -82,7 +82,7 @@ object AppSettings {
         val prefix = when (ref.kind) {
             LastSessionRef.Kind.SOUND -> "sound"
             LastSessionRef.Kind.PLAYLIST -> "playlist"
-            LastSessionRef.Kind.MIX -> "mix"
+            LastSessionRef.Kind.SCENE -> "scene"
         }
         prefs(c).edit().putString(KEY_LAST_SESSION, "$prefix:${ref.targetId}").apply()
     }
@@ -100,5 +100,5 @@ object AppSettings {
 }
 
 data class LastSessionRef(val kind: Kind, val targetId: String) {
-    enum class Kind { SOUND, PLAYLIST, MIX }
+    enum class Kind { SOUND, PLAYLIST, SCENE }
 }

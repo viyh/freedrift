@@ -62,8 +62,8 @@ class PlaybackService : LifecycleService() {
     private var mediaSession: MediaSession? = null
     private var isForeground = false
 
-    /** Active layer players, parallel to the current Mix's layers list. Empty when not in mix mode. */
-    private val mixPlayers = mutableListOf<ExoPlayer>()
+    /** Active layer players, parallel to the current Scene's layers list. Empty when not in scene mode. */
+    private val scenePlayers = mutableListOf<ExoPlayer>()
 
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -222,8 +222,8 @@ class PlaybackService : LifecycleService() {
         mediaSession = null
         playerA.release()
         playerB.release()
-        mixPlayers.forEach { runCatching { it.release() } }
-        mixPlayers.clear()
+        scenePlayers.forEach { runCatching { it.release() } }
+        scenePlayers.clear()
         super.onDestroy()
     }
 
@@ -232,9 +232,9 @@ class PlaybackService : LifecycleService() {
     fun playSingle(source: SoundSource) {
         Log.d(TAG, "playSingle(${source.id})")
         stopPlaylistScheduling()
-        teardownMix()
+        teardownScene()
         requestAudioFocus()
-        _state.update { it.copy(playlistSession = null, mixSession = null) }
+        _state.update { it.copy(playlistSession = null, sceneSession = null) }
         playOnActive(source, fadeIn = true)
         promoteToForeground()
         rememberLastSession(LastSessionRef(LastSessionRef.Kind.SOUND, source.id))
@@ -244,9 +244,9 @@ class PlaybackService : LifecycleService() {
         Log.d(TAG, "playPlaylist(${playlist.name}, ${playlist.entries.size} entries)")
         if (playlist.entries.isEmpty()) return
         stopPlaylistScheduling()
-        teardownMix()
+        teardownScene()
         requestAudioFocus()
-        _state.update { it.copy(playlistSession = PlaylistSession(playlist, 0), mixSession = null) }
+        _state.update { it.copy(playlistSession = PlaylistSession(playlist, 0), sceneSession = null) }
 
         startPlaylistEntry(playlist.entries[0], fadeIn = true)
         promoteToForeground()
@@ -277,43 +277,43 @@ class PlaybackService : LifecycleService() {
 
     /** Start an entry immediately (no prior state assumed beyond playlistSession already set). */
     private fun startPlaylistEntry(entry: PlaylistEntry, fadeIn: Boolean) {
-        if (entry.isMix) {
-            val mix = MixRepository.load(this).firstOrNull { it.id == entry.mixId } ?: return
-            startMixPool(mix, fadeDuration = if (fadeIn) fadeInDuration else MIN_FADE)
+        if (entry.isScene) {
+            val scene = SceneRepository.load(this).firstOrNull { it.id == entry.sceneId } ?: return
+            startScenePool(scene, fadeDuration = if (fadeIn) fadeInDuration else MIN_FADE)
         } else {
             val source = resolveSoundSource(this, entry.soundId) ?: return
             playOnActive(source, fadeIn)
-            _state.update { it.copy(mixSession = null) }
+            _state.update { it.copy(sceneSession = null) }
         }
     }
 
     /**
      * Returns false if the next entry can't be resolved. Dispatches based on whether
-     * the transition is sound→sound (existing crossfadeTo) or involves a mix (parallel
+     * the transition is sound→sound (existing crossfadeTo) or involves a scene (parallel
      * fade-out of current audible players + fade-in of new ones over crossfadeDuration).
      */
     private fun transitionPlaylistEntry(next: PlaylistEntry, nextIdx: Int): Boolean {
-        val prevWasMix = _state.value.mixSession != null
-        val nextIsMix = next.isMix
+        val prevWasScene = _state.value.sceneSession != null
+        val nextIsScene = next.isScene
 
-        if (!prevWasMix && !nextIsMix) {
+        if (!prevWasScene && !nextIsScene) {
             val src = resolveSoundSource(this, next.soundId) ?: return false
             crossfadeTo(src, nextIdx)
             return true
         }
 
         // Resolve next
-        val nextMix = if (nextIsMix) MixRepository.load(this).firstOrNull { it.id == next.mixId } else null
-        val nextSource = if (!nextIsMix) resolveSoundSource(this, next.soundId) else null
-        if (nextIsMix && nextMix == null) return false
-        if (!nextIsMix && nextSource == null) return false
+        val nextScene = if (nextIsScene) SceneRepository.load(this).firstOrNull { it.id == next.sceneId } else null
+        val nextSource = if (!nextIsScene) resolveSoundSource(this, next.soundId) else null
+        if (nextIsScene && nextScene == null) return false
+        if (!nextIsScene && nextSource == null) return false
 
         val crossMs = crossfadeDuration
 
         // 1) Fade out whatever's currently audible.
-        if (prevWasMix) {
-            val outgoing = mixPlayers.toList()
-            mixPlayers.clear() // logically "not current" anymore
+        if (prevWasScene) {
+            val outgoing = scenePlayers.toList()
+            scenePlayers.clear() // logically "not current" anymore
             outgoing.forEach { p -> fade(p, p.volume, 0f, crossMs) }
             lifecycleScope.launch {
                 delay(crossMs.inWholeMilliseconds)
@@ -337,8 +337,8 @@ class PlaybackService : LifecycleService() {
         }
 
         // 2) Set up incoming.
-        if (nextIsMix) {
-            startMixPool(nextMix!!, fadeDuration = crossMs)
+        if (nextIsScene) {
+            startScenePool(nextScene!!, fadeDuration = crossMs)
             _state.update {
                 it.copy(playlistSession = it.playlistSession?.copy(currentIndex = nextIdx))
             }
@@ -356,7 +356,7 @@ class PlaybackService : LifecycleService() {
             _state.update {
                 it.copy(
                     current = nextSource,
-                    mixSession = null,
+                    sceneSession = null,
                     playlistSession = it.playlistSession?.copy(currentIndex = nextIdx),
                 )
             }
@@ -366,56 +366,56 @@ class PlaybackService : LifecycleService() {
     }
 
     /**
-     * Allocates a fresh pool of ExoPlayers for [mix] and fades each layer in to its
-     * defaultVolume over [fadeDuration]. Updates mixSession/MediaSession state.
-     * The caller is responsible for clearing any pre-existing mix pool first.
+     * Allocates a fresh pool of ExoPlayers for [scene] and fades each layer in to its
+     * defaultVolume over [fadeDuration]. Updates sceneSession/MediaSession state.
+     * The caller is responsible for clearing any pre-existing scene pool first.
      */
-    private fun startMixPool(mix: Mix, fadeDuration: Duration) {
+    private fun startScenePool(scene: Scene, fadeDuration: Duration) {
         requestAudioFocus()
 
         // Pick the layer to bind the MediaSession to. Preference order:
         //   1. first Continuous layer (so lockscreen shows "playing" immediately — an
         //      intermittent layer is silent until its random initial delay fires)
         //   2. otherwise first layer (fallback — lockscreen will briefly show paused)
-        val sessionLayerIdx = mix.layers.indexOfFirst { layer ->
+        val sessionLayerIdx = scene.layers.indexOfFirst { layer ->
             SoundSettingsRepository.get(this, layer.soundId).mode == SoundSettings.Mode.CONTINUOUS
         }.takeIf { it >= 0 } ?: 0
 
         var sessionPlayer: ExoPlayer? = null
-        val newPlayers = mix.layers.mapIndexedNotNull { i, layer ->
+        val newPlayers = scene.layers.mapIndexedNotNull { i, layer ->
             val src = resolveSoundSource(this, layer.soundId) ?: return@mapIndexedNotNull null
             val p = buildPlayer()
             val isPrimary = (i == sessionLayerIdx)
-            p.setMediaItem(buildMediaItemForMix(src, mix, isPrimary = isPrimary))
+            p.setMediaItem(buildMediaItemForScene(src, scene, isPrimary = isPrimary))
             p.prepare()
             applySoundSettings(p, layer.soundId)
             setLogicalVolume(p, 0f)
             if (isPrimary) sessionPlayer = p
             p
         }
-        mixPlayers.addAll(newPlayers)
+        scenePlayers.addAll(newPlayers)
 
         // Session binding uses the preferred (or fallback) player.
         (sessionPlayer ?: newPlayers.firstOrNull())?.let { sp ->
-            val mixWrap = object : ForwardingPlayer(sp) {
+            val sceneWrap = object : ForwardingPlayer(sp) {
                 override fun play() { resumeCurrentWithFade() }
                 override fun pause() { pauseCurrentImmediate() }
                 override fun getDuration(): Long = C.TIME_UNSET
                 override fun getContentDuration(): Long = C.TIME_UNSET
             }
-            mediaSession?.setPlayer(mixWrap)
+            mediaSession?.setPlayer(sceneWrap)
         }
 
-        val primaryLayerSource = mix.layers.getOrNull(sessionLayerIdx)?.let {
+        val primaryLayerSource = scene.layers.getOrNull(sessionLayerIdx)?.let {
             resolveSoundSource(this, it.soundId)
         }
         _state.update {
             it.copy(
                 current = primaryLayerSource,
                 isPlaying = true,
-                mixSession = MixSession(
-                    mix = mix,
-                    currentVolumes = mix.layers.map { it.defaultVolume.coerceIn(0f, 1f) },
+                sceneSession = SceneSession(
+                    scene = scene,
+                    currentVolumes = scene.layers.map { it.defaultVolume.coerceIn(0f, 1f) },
                 ),
             )
         }
@@ -424,7 +424,7 @@ class PlaybackService : LifecycleService() {
         // Now start each player. Continuous layers play immediately; Intermittent layers
         // wait a random 0..2*minGap seconds before their first play so multiple
         // intermittent layers don't all fire at t=0.
-        mix.layers.forEachIndexed { i, layer ->
+        scene.layers.forEachIndexed { i, layer ->
             // Find the built player for this layer. mapIndexedNotNull may have skipped
             // layers with missing sources, so iterate by soundId lookup.
             val p = newPlayers.firstOrNull {
@@ -456,7 +456,7 @@ class PlaybackService : LifecycleService() {
             // Player may have been torn down while we waited.
             if (soundSettingsForPlayer[p] == null) return@launch
             // Respect user pause during the wait — resumeCurrentWithFade will restart
-            // all mix players when they resume, including this one.
+            // all scene players when they resume, including this one.
             if (!_state.value.isPlaying) return@launch
             p.seekTo(0)
             p.playWhenReady = true
@@ -464,9 +464,9 @@ class PlaybackService : LifecycleService() {
         }
     }
 
-    fun playMix(mix: Mix) {
-        Log.d(TAG, "playMix(${mix.name}, ${mix.layers.size} layers)")
-        if (mix.layers.isEmpty()) return
+    fun playScene(scene: Scene) {
+        Log.d(TAG, "playScene(${scene.name}, ${scene.layers.size} layers)")
+        if (scene.layers.isEmpty()) return
         stopPlaylistScheduling()
         // Stop single/playlist players.
         listOf(playerA, playerB).forEach { p ->
@@ -474,13 +474,13 @@ class PlaybackService : LifecycleService() {
             p.playWhenReady = false
             p.clearMediaItems()
         }
-        teardownMix()
+        teardownScene()
         requestAudioFocus()
         _state.update { it.copy(playlistSession = null) }
-        startMixPool(mix, fadeDuration = fadeInDuration)
+        startScenePool(scene, fadeDuration = fadeInDuration)
         refreshNotification()
         promoteToForeground()
-        rememberLastSession(LastSessionRef(LastSessionRef.Kind.MIX, mix.id))
+        rememberLastSession(LastSessionRef(LastSessionRef.Kind.SCENE, scene.id))
     }
 
     private fun rememberLastSession(ref: LastSessionRef) {
@@ -490,15 +490,15 @@ class PlaybackService : LifecycleService() {
 
     fun setLayerVolume(layerIndex: Int, volume: Float) {
         val v = volume.coerceIn(0f, 1f)
-        val players = mixPlayers
+        val players = scenePlayers
         if (layerIndex !in players.indices) return
         // Direct set — no fade — so slider feels responsive.
         fades[players[layerIndex]]?.cancel()
         setLogicalVolume(players[layerIndex], v)
         _state.update {
-            val ms = it.mixSession ?: return@update it
+            val ms = it.sceneSession ?: return@update it
             it.copy(
-                mixSession = ms.copy(
+                sceneSession = ms.copy(
                     currentVolumes = ms.currentVolumes.toMutableList().also { v2 ->
                         if (layerIndex in v2.indices) v2[layerIndex] = v
                     }
@@ -507,19 +507,19 @@ class PlaybackService : LifecycleService() {
         }
     }
 
-    fun saveMixLevels() {
-        val ms = _state.value.mixSession ?: return
-        val updated = ms.mix.copy(
-            layers = ms.mix.layers.mapIndexed { i, l ->
+    fun saveSceneLevels() {
+        val ms = _state.value.sceneSession ?: return
+        val updated = ms.scene.copy(
+            layers = ms.scene.layers.mapIndexed { i, l ->
                 l.copy(defaultVolume = ms.currentVolumes.getOrElse(i) { l.defaultVolume })
             }
         )
-        MixRepository.upsert(this, updated)
-        _state.update { it.copy(mixSession = ms.copy(mix = updated)) }
+        SceneRepository.upsert(this, updated)
+        _state.update { it.copy(sceneSession = ms.copy(scene = updated)) }
     }
 
-    private fun teardownMix() {
-        mixPlayers.forEach { p ->
+    private fun teardownScene() {
+        scenePlayers.forEach { p ->
             fades[p]?.cancel()
             fades.remove(p)
             intermittentJobs[p]?.cancel()
@@ -532,7 +532,7 @@ class PlaybackService : LifecycleService() {
                 p.release()
             }
         }
-        mixPlayers.clear()
+        scenePlayers.clear()
         // Restore MediaSession to playerA wrapper for single/playlist mode.
         mediaSession?.setPlayer(activeWrapped())
     }
@@ -606,7 +606,7 @@ class PlaybackService : LifecycleService() {
         // If all configs match our attrs, fall back to a count check: anything beyond our
         // own active players must be another media app.
         val ourActive = listOf(playerA, playerB).count { it.playWhenReady } +
-            mixPlayers.count { it.playWhenReady }
+            scenePlayers.count { it.playWhenReady }
         return configs.size > ourActive
     }
 
@@ -725,7 +725,7 @@ class PlaybackService : LifecycleService() {
         timerJob?.cancel()
         timerJob = null
         stopPlaylistScheduling()
-        teardownMix()
+        teardownScene()
         playerA.playWhenReady = false
         playerB.playWhenReady = false
         playerA.clearMediaItems()
@@ -750,11 +750,11 @@ class PlaybackService : LifecycleService() {
     fun pause() = pauseCurrentImmediate()
 
     private fun pauseCurrentImmediate() {
-        val ms = _state.value.mixSession
-        if (ms != null && mixPlayers.isNotEmpty()) {
+        val ms = _state.value.sceneSession
+        if (ms != null && scenePlayers.isNotEmpty()) {
             _state.update { it.copy(isPlaying = false) }
             refreshNotification()
-            mixPlayers.forEach { p ->
+            scenePlayers.forEach { p ->
                 if (p.playWhenReady) {
                     fades[p]?.cancel()
                     p.playWhenReady = false
@@ -779,9 +779,9 @@ class PlaybackService : LifecycleService() {
         // lockscreen button briefly showed the wrong state). Otherwise resume resets
         // every layer's volume to 0 and fades up — an audible "restart".
         if (_state.value.isPlaying) return
-        val ms = _state.value.mixSession
-        if (ms != null && mixPlayers.isNotEmpty()) {
-            mixPlayers.forEachIndexed { i, p ->
+        val ms = _state.value.sceneSession
+        if (ms != null && scenePlayers.isNotEmpty()) {
+            scenePlayers.forEachIndexed { i, p ->
                 val target = ms.currentVolumes.getOrElse(i) { 0f }
                 setLogicalVolume(p, 0f)
                 p.playWhenReady = true
@@ -811,8 +811,8 @@ class PlaybackService : LifecycleService() {
                 if (remaining <= timerFadeOutDuration.inWholeMilliseconds) break
                 delay(1_000)
             }
-            // Fade out every currently-audible player (single/playlist/mix).
-            val allPlayers = listOf(playerA, playerB) + mixPlayers
+            // Fade out every currently-audible player (single/playlist/scene).
+            val allPlayers = listOf(playerA, playerB) + scenePlayers
             val jobs = allPlayers.map { p ->
                 launch {
                     fades[p]?.cancelAndJoin()
@@ -998,13 +998,13 @@ class PlaybackService : LifecycleService() {
             )
             .build()
 
-    private fun buildMediaItemForMix(source: SoundSource, mix: Mix, isPrimary: Boolean): MediaItem {
+    private fun buildMediaItemForScene(source: SoundSource, scene: Scene, isPrimary: Boolean): MediaItem {
         // The PRIMARY layer is the one the MediaSession binds to, so its metadata is what
-        // the lockscreen/notification shows. Give it the mix name. Others get layer names
+        // the lockscreen/notification shows. Give it the scene name. Others get layer names
         // (not shown, but useful for debugging / future layer switching UI).
         val metadata = MediaMetadata.Builder()
-            .setTitle(if (isPrimary) mix.name else source.displayName)
-            .setArtist(if (isPrimary) "${mix.layers.size} layers" else mix.name)
+            .setTitle(if (isPrimary) scene.name else source.displayName)
+            .setArtist(if (isPrimary) "${scene.layers.size} layers" else scene.name)
             .setIsBrowsable(false)
             .setIsPlayable(true)
             .build()
@@ -1023,11 +1023,11 @@ class PlaybackService : LifecycleService() {
         )
         val s = _state.value
         val title = when {
-            s.mixSession != null -> s.mixSession.mix.name
+            s.sceneSession != null -> s.sceneSession.scene.name
             else -> s.current?.displayName ?: getString(R.string.app_name)
         }
         val subtitle = when {
-            s.mixSession != null -> "${s.mixSession.mix.layers.size} layers"
+            s.sceneSession != null -> "${s.sceneSession.scene.layers.size} layers"
             s.playlistSession != null -> "${s.playlistSession.playlist.name} · ${s.playlistSession.currentIndex + 1} of ${s.playlistSession.playlist.entries.size}"
             else -> getString(R.string.app_name)
         }
@@ -1061,7 +1061,7 @@ data class PlaybackState(
     val timerEndsAt: Long? = null,
     val timerTotalMs: Long? = null,
     val playlistSession: PlaylistSession? = null,
-    val mixSession: MixSession? = null,
+    val sceneSession: SceneSession? = null,
     val appVolume: Float = 1f,
     val duckOnNotifications: Boolean = false,
     val lastSession: LastSessionRef? = null,
@@ -1072,8 +1072,8 @@ data class PlaylistSession(
     val currentIndex: Int,
 )
 
-data class MixSession(
-    val mix: Mix,
-    /** Current volume per layer, parallel to mix.layers. Updated live as sliders move. */
+data class SceneSession(
+    val scene: Scene,
+    /** Current volume per layer, parallel to scene.layers. Updated live as sliders move. */
     val currentVolumes: List<Float>,
 )
