@@ -12,9 +12,9 @@ private val BlackDark = darkColorScheme(
     secondary = Color(0xFF566573),
     background = Color.Black,
     onBackground = Color(0xFFE8E8E8),
-    surface = Color(0xFF0A0A0A),
+    surface = Color(0xFF181818),
     onSurface = Color(0xFFE8E8E8),
-    surfaceVariant = Color(0xFF161616),
+    surfaceVariant = Color(0xFF262626),
     onSurfaceVariant = Color(0xFFB0B0B0),
 )
 

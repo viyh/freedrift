@@ -186,40 +186,44 @@ fun HomeScreen(
     Scaffold(
         containerColor = Color.Black,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(tab.label, fontWeight = FontWeight.Light)
-                        Text(
-                            tab.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                actions = {
-                    when (tab) {
-                        Tab.SOUNDS -> IconButton(onClick = onPickSound) {
-                            Icon(Icons.Default.Add, "Add sound", tint = MaterialTheme.colorScheme.primary)
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(tab.label, fontWeight = FontWeight.Light)
+                            Text(
+                                tab.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                        Tab.SCENES -> IconButton(onClick = onNewScene) {
-                            Icon(Icons.Default.Add, "New scene", tint = MaterialTheme.colorScheme.primary)
+                    },
+                    actions = {
+                        when (tab) {
+                            Tab.SOUNDS -> IconButton(onClick = onPickSound) {
+                                Icon(Icons.Default.Add, "Add sound", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Tab.SCENES -> IconButton(onClick = onNewScene) {
+                                Icon(Icons.Default.Add, "New scene", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Tab.PLAYLISTS -> IconButton(onClick = onNewPlaylist) {
+                                Icon(Icons.Default.Add, "New playlist", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Tab.SETTINGS -> {}
                         }
-                        Tab.PLAYLISTS -> IconButton(onClick = onNewPlaylist) {
-                            Icon(Icons.Default.Add, "New playlist", tint = MaterialTheme.colorScheme.primary)
-                        }
-                        Tab.SETTINGS -> {}
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Black,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    )
                 )
-            )
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            }
         },
         bottomBar = {
             Column {
                 if (showMini) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                     MiniPlayer(
                         state = state,
                         lastSessionName = lastSessionName,
@@ -230,8 +234,8 @@ fun HomeScreen(
                         onOpenTimer = { timerDialogOpen = true },
                         onExpand = { if (hasPlayback) expandedPlayer = true },
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 NavigationBar(containerColor = Color.Black) {
                     Tab.values().forEach { t ->
                         NavigationBarItem(
