@@ -210,6 +210,10 @@ class MainActivity : ComponentActivity() {
                             service?.saveSceneLevels()
                             reloadScenes()
                         },
+                        onUpdateSceneDefaults = { scene ->
+                            SceneRepository.upsert(this, scene)
+                            reloadScenes()
+                        },
                         onPause = { service?.pause() },
                         onStop = { service?.stop() },
                         onSetTimer = { d -> service?.setSleepTimer(d) },

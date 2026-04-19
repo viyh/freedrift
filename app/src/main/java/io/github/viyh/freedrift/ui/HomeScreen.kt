@@ -136,6 +136,7 @@ fun HomeScreen(
     onNewScene: () -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
     onSaveSceneLevels: () -> Unit,
+    onUpdateSceneDefaults: (Scene) -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
     onSetTimer: (Duration) -> Unit,
@@ -393,6 +394,10 @@ fun HomeScreen(
                         ?: state.lastSession
                             ?.takeIf { it.kind == LastSessionRef.Kind.SOUND }
                             ?.let { ref -> sounds.firstOrNull { it.id == ref.targetId } }
+                    val focusedScene = state.sceneSession?.scene
+                        ?: state.lastSession
+                            ?.takeIf { it.kind == LastSessionRef.Kind.SCENE }
+                            ?.let { ref -> scenes.firstOrNull { it.id == ref.targetId } }
                     ExpandedPlayer(
                         state = state,
                         appVolume = appVolume,
@@ -412,6 +417,8 @@ fun HomeScreen(
                         soundSettings = soundSettings,
                         onSetSoundSettings = onSetSoundSettings,
                         focusedSound = focusedSound,
+                        focusedScene = focusedScene,
+                        onUpdateSceneDefaults = onUpdateSceneDefaults,
                     )
                 }
 
@@ -1133,6 +1140,8 @@ private fun ExpandedPlayer(
     soundSettings: Map<String, SoundSettings>,
     onSetSoundSettings: (String, SoundSettings) -> Unit,
     focusedSound: SoundSource?,
+    focusedScene: Scene?,
+    onUpdateSceneDefaults: (Scene) -> Unit,
 ) {
     val title = when {
         state.sceneSession != null -> state.sceneSession.scene.name
@@ -1143,6 +1152,7 @@ private fun ExpandedPlayer(
         state.sceneSession != null -> "${state.sceneSession.scene.layers.size} layers"
         state.playlistSession != null ->
             "${state.playlistSession.playlist.name} · ${state.playlistSession.currentIndex + 1} of ${state.playlistSession.playlist.entries.size}"
+        focusedScene != null -> "${focusedScene.layers.size} layers"
         else -> null
     }
 
@@ -1208,6 +1218,23 @@ private fun ExpandedPlayer(
                         editable = false,
                         currentVolumes = state.sceneSession.currentVolumes,
                         onVolumeChange = onSetLayerVolume,
+                    )
+                    TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
+                } else if (focusedScene != null) {
+                    // Scene is focused but not playing — sliders edit the saved
+                    // defaults directly. The Save button is shown for visual
+                    // parity with the playing state; clicking it is a no-op
+                    // since the defaults are already updated as you drag.
+                    LayerSliderBank(
+                        layers = focusedScene.layers,
+                        editable = false,
+                        currentVolumes = focusedScene.layers.map { it.defaultVolume },
+                        onVolumeChange = { idx, v ->
+                            val updatedLayers = focusedScene.layers.toMutableList().also { ls ->
+                                if (idx in ls.indices) ls[idx] = ls[idx].copy(defaultVolume = v)
+                            }
+                            onUpdateSceneDefaults(focusedScene.copy(layers = updatedLayers))
+                        },
                     )
                     TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
                 } else if (focusedSound != null) {
