@@ -3,7 +3,10 @@ package io.github.viyh.freedrift.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -167,12 +170,15 @@ fun HomeScreen(
         if (canGoBack) onBack()
     }
 
+    var navBarHeightPx by remember { mutableIntStateOf(0) }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .clipToBounds(),
     ) {
-        val panelHeightPx = constraints.maxHeight.toFloat()
+        val totalHeightPx = constraints.maxHeight.toFloat()
+        val panelHeightPx = (totalHeightPx - navBarHeightPx).coerceAtLeast(1f)
 
         val openPanel: () -> Unit = {
             dragScope.launch { expandProgress.animateTo(1f, tween(220)) }
@@ -266,30 +272,8 @@ fun HomeScreen(
             }
         },
         bottomBar = {
-            Column {
-                if (showMini) {
-                    HorizontalDivider(
-                        thickness = 2.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                    )
-                    MiniPlayer(
-                        state = state,
-                        lastSessionName = lastSessionName,
-                        onPause = onPause,
-                        onResume = { state.current?.let(onPlay) },
-                        onStop = onStop,
-                        onResumeLast = onResumeLastSession,
-                        onOpenTimer = { timerDialogOpen = true },
-                        onTap = openPanel,
-                        dragModifier = miniDragModifier,
-                    )
-                    HorizontalDivider(
-                        thickness = 2.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                    )
-                } else {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-                }
+            Column(modifier = Modifier.onSizeChanged { navBarHeightPx = it.height }) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 NavigationBar(containerColor = Color.Black) {
                     Tab.values().forEach { t ->
                         NavigationBarItem(
@@ -357,31 +341,78 @@ fun HomeScreen(
         }
     }
 
-        // Only compose the expanded panel when it can contribute pixels. This
-        // also stops it from intercepting touches while fully closed.
-        if (expandProgress.value > 0f || isExpanded) {
+        // The drawer area lives above the nav bar. Both the mini-player and the
+        // ExpandedPlayer live inside it; at rest (progress=0) only the mini-player
+        // is visible at the bottom. Dragging up translates the mini-player off
+        // the top while the expanded panel slides up from below in step with it.
+        if (showMini || expandProgress.value > 0f) {
+            val panelHeightDp = with(LocalDensity.current) { panelHeightPx.toDp() }
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, ((1f - expandProgress.value) * panelHeightPx).toInt()) },
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+                    .height(panelHeightDp)
+                    .clipToBounds(),
             ) {
-                ExpandedPlayer(
-                    state = state,
-                    appVolume = appVolume,
-                    onSetAppVolume = onSetAppVolume,
-                    onSetLayerVolume = onSetLayerVolume,
-                    onSaveSceneLevels = onSaveSceneLevels,
-                    onPause = onPause,
-                    onResume = {
-                        val current = state.current
-                        if (current != null) onPlay(current) else onResumeLastSession()
-                    },
-                    onStop = onStop,
-                    onOpenTimer = { timerDialogOpen = true },
-                    onClose = closePanel,
-                    lastSessionName = lastSessionName,
-                    dragModifier = expandedDragModifier,
-                )
+                // Expanded panel: anchored to the top of the drawer area and pushed
+                // down by (1 - progress) * panelHeight at rest, so it sits flush
+                // below the mini-player as you drag.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, ((1f - expandProgress.value) * panelHeightPx).toInt()) },
+                ) {
+                    ExpandedPlayer(
+                        state = state,
+                        appVolume = appVolume,
+                        onSetAppVolume = onSetAppVolume,
+                        onSetLayerVolume = onSetLayerVolume,
+                        onSaveSceneLevels = onSaveSceneLevels,
+                        onPause = onPause,
+                        onResume = {
+                            val current = state.current
+                            if (current != null) onPlay(current) else onResumeLastSession()
+                        },
+                        onStop = onStop,
+                        onOpenTimer = { timerDialogOpen = true },
+                        onClose = closePanel,
+                        lastSessionName = lastSessionName,
+                        dragModifier = expandedDragModifier,
+                    )
+                }
+
+                // Mini-player: anchored to the bottom of the drawer area, offset
+                // upward by progress * panelHeight so it leaves the top edge at
+                // progress=1 (fully expanded) while tracking the expanded panel's
+                // top edge at every point in between.
+                if (showMini) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomStart)
+                            .offset { IntOffset(0, (-expandProgress.value * panelHeightPx).toInt()) },
+                    ) {
+                        HorizontalDivider(
+                            thickness = 2.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                        )
+                        MiniPlayer(
+                            state = state,
+                            lastSessionName = lastSessionName,
+                            onPause = onPause,
+                            onResume = { state.current?.let(onPlay) },
+                            onStop = onStop,
+                            onResumeLast = onResumeLastSession,
+                            onOpenTimer = { timerDialogOpen = true },
+                            onTap = openPanel,
+                            dragModifier = miniDragModifier,
+                        )
+                        HorizontalDivider(
+                            thickness = 2.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                        )
+                    }
+                }
             }
         }
     }
