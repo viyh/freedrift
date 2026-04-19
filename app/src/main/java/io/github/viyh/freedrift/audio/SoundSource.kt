@@ -124,7 +124,15 @@ object SoundLibrary {
         s = DIGIT_LETTER.replace(s, "$1 $2")
         s = WHITESPACE.replace(s, " ").trim()
         return s.split(' ').joinToString(" ") { w ->
-            if (w.isEmpty()) "" else w[0].uppercase() + w.substring(1).lowercase()
+            if (w.isEmpty()) return@joinToString ""
+            // Capitalize the first letter in the word — not the first character —
+            // so prefixes like "(" or quotes don't block the capitalization
+            // (e.g. "(gentle," -> "(Gentle,").
+            val firstLetter = w.indexOfFirst { it.isLetter() }
+            if (firstLetter < 0) w
+            else w.substring(0, firstLetter) +
+                w[firstLetter].uppercase() +
+                w.substring(firstLetter + 1).lowercase()
         }
     }
 

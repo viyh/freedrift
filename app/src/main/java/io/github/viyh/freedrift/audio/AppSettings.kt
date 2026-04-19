@@ -15,6 +15,7 @@ object AppSettings {
     private const val KEY_DUCK_ON_NOTIFICATIONS = "duck_on_notifications"
     private const val KEY_LAST_SESSION = "last_session"
     private const val KEY_STARTERS_SEEDED = "starters_seeded"
+    private const val KEY_STARTERS_SEEDED_VERSION = "starters_seeded_version"
 
     private const val DEFAULT_CROSSFADE_SEC = 8
     private const val DEFAULT_FADE_IN_SEC = 1
@@ -96,6 +97,13 @@ object AppSettings {
 
     fun setStartersSeeded(c: Context, v: Boolean) {
         prefs(c).edit().putBoolean(KEY_STARTERS_SEEDED, v).apply()
+    }
+
+    fun startersSeededVersion(c: Context): Int =
+        prefs(c).getInt(KEY_STARTERS_SEEDED_VERSION, 0)
+
+    fun setStartersSeededVersion(c: Context, v: Int) {
+        prefs(c).edit().putInt(KEY_STARTERS_SEEDED_VERSION, v).apply()
     }
 }
 

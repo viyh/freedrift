@@ -277,10 +277,10 @@ private fun LayerColumn(
                 layer.displayName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.height(28.dp),
+                modifier = Modifier.height(44.dp),
             )
             if (onRemove != null) {
                 IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
