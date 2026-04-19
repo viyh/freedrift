@@ -3,7 +3,6 @@ package io.github.viyh.freedrift.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -11,9 +10,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -50,7 +47,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -709,6 +705,12 @@ private fun SoundsTab(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.size(12.dp))
                     Text(
                         s.displayName,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -716,13 +718,16 @@ private fun SoundsTab(
                     )
                     ModeChip(
                         settings = settings,
-                        onToggle = {
-                            val next = if (settings.mode == SoundSettings.Mode.CONTINUOUS)
-                                settings.copy(mode = SoundSettings.Mode.INTERMITTENT)
-                            else settings.copy(mode = SoundSettings.Mode.CONTINUOUS)
-                            onSetSoundSettings(s.id, next)
+                        onClick = {
+                            if (settings.mode == SoundSettings.Mode.INTERMITTENT) {
+                                gapEditingFor = s
+                            } else {
+                                onSetSoundSettings(
+                                    s.id,
+                                    settings.copy(mode = SoundSettings.Mode.INTERMITTENT),
+                                )
+                            }
                         },
-                        onLongPressIfIntermittent = { gapEditingFor = s },
                     )
                     if (s is SoundSource.UserFile) {
                         IconButton(onClick = { onRemoveUserSound(s) }) {
@@ -747,36 +752,28 @@ private fun SoundsTab(
                 onSetSoundSettings(s.id, current.copy(minGapSec = newMin))
                 gapEditingFor = null
             },
+            onSwitchToContinuous = {
+                onSetSoundSettings(s.id, current.copy(mode = SoundSettings.Mode.CONTINUOUS))
+                gapEditingFor = null
+            },
             onDismiss = { gapEditingFor = null },
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ModeChip(
     settings: SoundSettings,
-    onToggle: () -> Unit,
-    onLongPressIfIntermittent: () -> Unit,
+    onClick: () -> Unit,
 ) {
     val intermittent = settings.mode == SoundSettings.Mode.INTERMITTENT
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .size(40.dp)
-            .combinedClickable(
-                onClick = onToggle,
-                onLongClick = if (intermittent) onLongPressIfIntermittent else null,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
+    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
         Icon(
             imageVector = if (intermittent) Icons.Default.Timelapse else Icons.Default.AllInclusive,
             contentDescription = if (intermittent)
-                "Intermittent (long-press to adjust gap)"
-            else "Continuous",
-            tint = if (intermittent)
-                MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+                "Intermittent — tap to adjust gap"
+            else "Continuous — tap to switch to intermittent",
+            tint = MaterialTheme.colorScheme.primary,
         )
     }
 }
@@ -786,6 +783,7 @@ private fun GapSliderDialog(
     soundName: String,
     initial: Int,
     onConfirm: (Int) -> Unit,
+    onSwitchToContinuous: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var seconds by remember(initial) { mutableStateOf(initial.toFloat()) }
@@ -813,6 +811,15 @@ private fun GapSliderDialog(
                         activeTrackColor = MaterialTheme.colorScheme.primary,
                     ),
                 )
+                TextButton(onClick = onSwitchToContinuous) {
+                    Icon(
+                        Icons.Default.AllInclusive,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text("Switch to continuous")
+                }
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(rounded) }) { Text("Save") } },
@@ -856,6 +863,7 @@ private fun ScenesTab(
             items(scenes, key = { it.id }) { scene ->
                 val isActive = state.sceneSession?.scene?.id == scene.id
                 Surface(
+                    onClick = { onPlayScene(scene) },
                     color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
                     else MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(12.dp),
@@ -865,7 +873,11 @@ private fun ScenesTab(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Default.Tune, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Spacer(Modifier.size(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(scene.name, color = MaterialTheme.colorScheme.onBackground)
@@ -876,10 +888,7 @@ private fun ScenesTab(
                             )
                         }
                         IconButton(onClick = { onEditScene(scene) }) {
-                            Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { onPlayScene(scene) }) {
-                            Icon(Icons.Default.PlayArrow, "Play", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -909,6 +918,7 @@ private fun PlaylistsTab(
             val isActive = state.playlistSession?.playlist?.id == p.id
             val currentIndex = state.playlistSession?.currentIndex
             Surface(
+                onClick = { onPlayPlaylist(p) },
                 color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
                 else MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(12.dp),
@@ -918,7 +928,11 @@ private fun PlaylistsTab(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        Icons.Default.LibraryMusic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.name, color = MaterialTheme.colorScheme.onBackground)
@@ -935,10 +949,7 @@ private fun PlaylistsTab(
                         )
                     }
                     IconButton(onClick = { onEditPlaylist(p) }) {
-                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(onClick = { onPlayPlaylist(p) }) {
-                        Icon(Icons.Default.PlayArrow, "Play", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -1265,29 +1276,18 @@ private fun ExpandedPlayer(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
-                            // Slider icon is always present so the row height
-                            // doesn't jump between modes; it's only visible and
-                            // interactive in intermittent mode.
-                            IconButton(
-                                onClick = { gapDialogOpen = true },
-                                enabled = intermittent,
-                                modifier = Modifier.alpha(if (intermittent) 1f else 0f),
-                            ) {
-                                Icon(
-                                    Icons.Default.Tune,
-                                    contentDescription = "Adjust gap",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                             ModeChip(
                                 settings = settings,
-                                onToggle = {
-                                    val next = if (intermittent)
-                                        settings.copy(mode = SoundSettings.Mode.CONTINUOUS)
-                                    else settings.copy(mode = SoundSettings.Mode.INTERMITTENT)
-                                    onSetSoundSettings(current.id, next)
+                                onClick = {
+                                    if (intermittent) {
+                                        gapDialogOpen = true
+                                    } else {
+                                        onSetSoundSettings(
+                                            current.id,
+                                            settings.copy(mode = SoundSettings.Mode.INTERMITTENT),
+                                        )
+                                    }
                                 },
-                                onLongPressIfIntermittent = { gapDialogOpen = true },
                             )
                         }
                     }
@@ -1297,6 +1297,13 @@ private fun ExpandedPlayer(
                             initial = settings.minGapSec,
                             onConfirm = { newMin ->
                                 onSetSoundSettings(current.id, settings.copy(minGapSec = newMin))
+                                gapDialogOpen = false
+                            },
+                            onSwitchToContinuous = {
+                                onSetSoundSettings(
+                                    current.id,
+                                    settings.copy(mode = SoundSettings.Mode.CONTINUOUS),
+                                )
                                 gapDialogOpen = false
                             },
                             onDismiss = { gapDialogOpen = false },
