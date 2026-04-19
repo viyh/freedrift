@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Timelapse
@@ -75,6 +76,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -149,6 +151,7 @@ fun HomeScreen(
     onBack: () -> Unit,
 ) {
     var timerDialogOpen by remember { mutableStateOf(false) }
+    var batteryTipDismissed by rememberSaveable { mutableStateOf(false) }
 
     // Single drag-progress that drives the Now Playing transition: 0 = closed
     // (off-screen, below), 1 = fully open. Swipe-up on the mini-player and
@@ -315,7 +318,18 @@ fun HomeScreen(
                 .padding(pad)
                 .padding(bottom = with(LocalDensity.current) { miniColHeightPx.toDp() })
         ) {
-            when (tab) {
+            Column(Modifier.fillMaxSize()) {
+                val showBatteryTip = !isBatteryExempt &&
+                    !batteryTipDismissed &&
+                    tab != Tab.SETTINGS
+                if (showBatteryTip) {
+                    BatteryExemptionTip(
+                        onGoToSettings = { onTabChange(Tab.SETTINGS) },
+                        onDismiss = { batteryTipDismissed = true },
+                    )
+                }
+                Box(Modifier.weight(1f)) {
+                    when (tab) {
                 Tab.SOUNDS -> SoundsTab(
                     sounds = sounds,
                     current = state.current,
@@ -350,6 +364,8 @@ fun HomeScreen(
                     isBatteryExempt = isBatteryExempt,
                     onRequestBatteryExemption = onRequestBatteryExemption,
                 )
+                    }
+                }
             }
         }
     }
@@ -952,6 +968,53 @@ private fun PlaylistsTab(
                         Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
+            }
+        }
+    }
+}
+
+// ---------- Battery exemption tip (shown above non-Settings tabs) ----------
+
+@Composable
+private fun BatteryExemptionTip(
+    onGoToSettings: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        onClick = onGoToSettings,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.BatteryAlert,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.size(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Grant battery exemption",
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    "Tap to open Settings and allow uninterrupted overnight playback.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Dismiss",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

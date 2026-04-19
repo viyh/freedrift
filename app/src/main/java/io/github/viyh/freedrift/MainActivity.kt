@@ -75,6 +75,9 @@ class MainActivity : ComponentActivity() {
     private val _soundSettings = MutableStateFlow<Map<String, SoundSettings>>(emptyMap())
     val soundSettings: StateFlow<Map<String, SoundSettings>> = _soundSettings.asStateFlow()
 
+    private val _batteryExempt = MutableStateFlow(false)
+    val batteryExempt: StateFlow<Boolean> = _batteryExempt.asStateFlow()
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val s = (binder as PlaybackService.LocalBinder).service()
@@ -230,7 +233,7 @@ class MainActivity : ComponentActivity() {
                             service?.refreshSoundSettings()
                         },
                         onRequestBatteryExemption = ::requestBatteryExemption,
-                        isBatteryExempt = isBatteryExempt(),
+                        isBatteryExempt = batteryExempt.collectAsState().value,
                         tab = tab,
                         onTabChange = { newTab ->
                             if (tab != newTab) {
@@ -293,6 +296,14 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         val i = Intent(this, PlaybackService::class.java)
         bindService(i, connection, Context.BIND_AUTO_CREATE)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-poll the battery-optimization flag so the tip + settings card
+        // hide immediately after the user grants the exemption from the
+        // system dialog.
+        _batteryExempt.value = isBatteryExempt()
     }
 
     override fun onStop() {
