@@ -1,11 +1,10 @@
 package io.github.viyh.freedrift.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -70,7 +69,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +78,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -148,23 +145,89 @@ fun HomeScreen(
     onBack: () -> Unit,
 ) {
     var timerDialogOpen by remember { mutableStateOf(false) }
-    var expandedPlayer by remember { mutableStateOf(false) }
 
-    // When the expanded player is up, ITS BackHandler wins (more recently composed).
-    // Always enabled — back is consumed even when there's nowhere to go, so the app
-    // never closes via back gesture. Use swipe-up-from-bottom to close.
-    BackHandler(enabled = !expandedPlayer) {
-        if (canGoBack) onBack()
-    }
+    // Single drag-progress that drives the Now Playing transition: 0 = closed
+    // (off-screen, below), 1 = fully open. Swipe-up on the mini-player and
+    // swipe-down on the Now Playing top bar both adjust this value directly,
+    // so the drag is continuous — the expanded panel follows your finger as
+    // it slides up from behind the mini-player (or back down when closing).
+    val dragScope = rememberCoroutineScope()
+    val expandProgress = remember { Animatable(0f) }
+    val isExpanded = expandProgress.value > 0.5f
 
     val hasPlayback = state.current != null || state.sceneSession != null
     val showMini = hasPlayback || (state.lastSession != null && lastSessionName != null)
 
-    // Auto-close expanded player only when there's nothing to show at all
-    // (no active playback and no last session to resume).
-    if (expandedPlayer && !showMini) expandedPlayer = false
+    // If nothing is available to show, ensure the expanded panel is fully closed.
+    LaunchedEffect(showMini) {
+        if (!showMini && expandProgress.value > 0f) expandProgress.animateTo(0f)
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BackHandler(enabled = !isExpanded) {
+        if (canGoBack) onBack()
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .clipToBounds(),
+    ) {
+        val panelHeightPx = constraints.maxHeight.toFloat()
+
+        val openPanel: () -> Unit = {
+            dragScope.launch { expandProgress.animateTo(1f, tween(220)) }
+        }
+        val closePanel: () -> Unit = {
+            dragScope.launch { expandProgress.animateTo(0f, tween(220)) }
+        }
+
+        // Swipe-up on the mini-player: increase progress as user drags up.
+        // Down-drag is clamped so it never lowers progress below 0.
+        val miniDragModifier = Modifier.pointerInput(panelHeightPx) {
+            detectVerticalDragGestures(
+                onVerticalDrag = { _, dy ->
+                    dragScope.launch {
+                        val delta = -dy / panelHeightPx
+                        expandProgress.snapTo((expandProgress.value + delta).coerceIn(0f, 1f))
+                    }
+                },
+                onDragEnd = {
+                    dragScope.launch {
+                        expandProgress.animateTo(
+                            if (expandProgress.value > 0.15f) 1f else 0f,
+                            tween(220),
+                        )
+                    }
+                },
+                onDragCancel = {
+                    dragScope.launch { expandProgress.animateTo(0f, tween(220)) }
+                },
+            )
+        }
+
+        // Drag-down on the Now Playing top bar: decrease progress.
+        val expandedDragModifier = Modifier.pointerInput(panelHeightPx) {
+            detectVerticalDragGestures(
+                onVerticalDrag = { _, dy ->
+                    dragScope.launch {
+                        val delta = -dy / panelHeightPx
+                        expandProgress.snapTo((expandProgress.value + delta).coerceIn(0f, 1f))
+                    }
+                },
+                onDragEnd = {
+                    dragScope.launch {
+                        expandProgress.animateTo(
+                            if (expandProgress.value < 0.85f) 0f else 1f,
+                            tween(220),
+                        )
+                    }
+                },
+                onDragCancel = {
+                    dragScope.launch { expandProgress.animateTo(1f, tween(220)) }
+                },
+            )
+        }
+
     Scaffold(
         containerColor = Color.Black,
         topBar = {
@@ -217,7 +280,8 @@ fun HomeScreen(
                         onStop = onStop,
                         onResumeLast = onResumeLastSession,
                         onOpenTimer = { timerDialogOpen = true },
-                        onExpand = { expandedPlayer = true },
+                        onTap = openPanel,
+                        dragModifier = miniDragModifier,
                     )
                     HorizontalDivider(
                         thickness = 2.dp,
@@ -293,27 +357,32 @@ fun HomeScreen(
         }
     }
 
-        AnimatedVisibility(
-            visible = expandedPlayer,
-            enter = slideInVertically(animationSpec = tween(220)) { it },
-            exit = slideOutVertically(animationSpec = tween(220)) { it },
-        ) {
-            ExpandedPlayer(
-                state = state,
-                appVolume = appVolume,
-                onSetAppVolume = onSetAppVolume,
-                onSetLayerVolume = onSetLayerVolume,
-                onSaveSceneLevels = onSaveSceneLevels,
-                onPause = onPause,
-                onResume = {
-                    val current = state.current
-                    if (current != null) onPlay(current) else onResumeLastSession()
-                },
-                onStop = onStop,
-                onOpenTimer = { timerDialogOpen = true },
-                onClose = { expandedPlayer = false },
-                lastSessionName = lastSessionName,
-            )
+        // Only compose the expanded panel when it can contribute pixels. This
+        // also stops it from intercepting touches while fully closed.
+        if (expandProgress.value > 0f || isExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, ((1f - expandProgress.value) * panelHeightPx).toInt()) },
+            ) {
+                ExpandedPlayer(
+                    state = state,
+                    appVolume = appVolume,
+                    onSetAppVolume = onSetAppVolume,
+                    onSetLayerVolume = onSetLayerVolume,
+                    onSaveSceneLevels = onSaveSceneLevels,
+                    onPause = onPause,
+                    onResume = {
+                        val current = state.current
+                        if (current != null) onPlay(current) else onResumeLastSession()
+                    },
+                    onStop = onStop,
+                    onOpenTimer = { timerDialogOpen = true },
+                    onClose = closePanel,
+                    lastSessionName = lastSessionName,
+                    dragModifier = expandedDragModifier,
+                )
+            }
         }
     }
 
@@ -351,7 +420,8 @@ private fun MiniPlayer(
     onStop: () -> Unit,
     onResumeLast: () -> Unit,
     onOpenTimer: () -> Unit,
-    onExpand: () -> Unit,
+    onTap: () -> Unit,
+    dragModifier: Modifier,
 ) {
     val hasPlayback = state.current != null || state.sceneSession != null
     val title = when {
@@ -368,36 +438,12 @@ private fun MiniPlayer(
         else -> null
     }
 
-    val swipeThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
-    val dragOffset = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    val swipeUp = Modifier.pointerInput(Unit) {
-        detectVerticalDragGestures(
-            onVerticalDrag = { _, dy ->
-                scope.launch {
-                    // Only track upward drag (negative dy); clamp so downward stays at 0.
-                    dragOffset.snapTo((dragOffset.value + dy).coerceAtMost(0f))
-                }
-            },
-            onDragEnd = {
-                if (-dragOffset.value > swipeThresholdPx) {
-                    onExpand()
-                    scope.launch { dragOffset.snapTo(0f) }
-                } else {
-                    scope.launch { dragOffset.animateTo(0f) }
-                }
-            },
-            onDragCancel = { scope.launch { dragOffset.animateTo(0f) } },
-        )
-    }
-
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        onClick = { onExpand() },
+        onClick = onTap,
         modifier = Modifier
             .fillMaxWidth()
-            .offset { IntOffset(0, dragOffset.value.toInt()) }
-            .then(swipeUp),
+            .then(dragModifier),
     ) {
         Column {
             Row(
@@ -1046,6 +1092,7 @@ private fun ExpandedPlayer(
     onOpenTimer: () -> Unit,
     onClose: () -> Unit,
     lastSessionName: String?,
+    dragModifier: Modifier,
 ) {
     val title = when {
         state.sceneSession != null -> state.sceneSession.scene.name
@@ -1062,36 +1109,7 @@ private fun ExpandedPlayer(
     // System back / edge-swipe-back: collapse the expanded view instead of minimizing app.
     BackHandler { onClose() }
 
-    // Drag-down-to-dismiss on the top bar region.
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
-    val scope = rememberCoroutineScope()
-    val dismissThresholdPx = with(LocalDensity.current) { 140.dp.toPx() }
-    val dragModifier = Modifier.pointerInput(Unit) {
-        detectVerticalDragGestures(
-            onVerticalDrag = { _, dy ->
-                dragOffsetY = (dragOffsetY + dy).coerceAtLeast(0f)
-            },
-            onDragEnd = {
-                if (dragOffsetY > dismissThresholdPx) {
-                    onClose()
-                } else {
-                    scope.launch {
-                        val anim = Animatable(dragOffsetY)
-                        anim.animateTo(0f) { dragOffsetY = value }
-                    }
-                }
-            },
-            onDragCancel = {
-                scope.launch {
-                    val anim = Animatable(dragOffsetY)
-                    anim.animateTo(0f) { dragOffsetY = value }
-                }
-            },
-        )
-    }
-
     Scaffold(
-        modifier = Modifier.offset { IntOffset(0, dragOffsetY.toInt()) },
         containerColor = Color.Black,
         topBar = {
             Column {
