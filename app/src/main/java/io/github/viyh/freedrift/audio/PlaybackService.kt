@@ -743,6 +743,8 @@ class PlaybackService : LifecycleService() {
      *  Sleep timer has its own gradual fade-out path instead. */
     fun pause() = pauseCurrentImmediate()
 
+    fun resume() = resumeCurrentWithFade()
+
     private fun pauseCurrentImmediate() {
         val session = _state.value.sceneSession
         if (session != null && scenePlayers.isNotEmpty()) {

@@ -10,7 +10,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -47,7 +51,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -82,6 +85,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,6 +140,7 @@ fun HomeScreen(
     onSaveSceneLevels: () -> Unit,
     onUpdateSceneDefaults: (Scene) -> Unit,
     onPause: () -> Unit,
+    onResume: () -> Unit,
     onStop: () -> Unit,
     onSetTimer: (Duration) -> Unit,
     onCancelTimer: () -> Unit,
@@ -199,6 +204,12 @@ fun HomeScreen(
         }
         val closePanel: () -> Unit = {
             dragScope.launch { expandProgress.animateTo(0f, tween(220)) }
+        }
+        // Long-press-play action: clear the session and re-start it from the
+        // beginning (scene, playlist, or single sound — whatever last played).
+        val restartFromBeginning: () -> Unit = {
+            onStop()
+            onResumeLastSession()
         }
 
         // Swipe-up on the mini-player: increase progress as user drags up.
@@ -418,10 +429,16 @@ fun HomeScreen(
                         onSaveSceneLevels = onSaveSceneLevels,
                         onPause = onPause,
                         onResume = {
-                            val current = state.current
-                            if (current != null) onPlay(current) else onResumeLastSession()
+                            // Active playback (including scenes): resume in place.
+                            // Stopped with a last session: restart that session fresh.
+                            if (state.current != null || state.sceneSession != null) {
+                                onResume()
+                            } else {
+                                onResumeLastSession()
+                            }
                         },
                         onStop = onStop,
+                        onRestart = restartFromBeginning,
                         onOpenTimer = { timerDialogOpen = true },
                         onClose = closePanel,
                         lastSessionName = lastSessionName,
@@ -454,8 +471,9 @@ fun HomeScreen(
                             state = state,
                             lastSessionName = lastSessionName,
                             onPause = onPause,
-                            onResume = { state.current?.let(onPlay) },
+                            onResume = onResume,
                             onStop = onStop,
+                            onRestart = restartFromBeginning,
                             onResumeLast = onResumeLastSession,
                             onOpenTimer = { timerDialogOpen = true },
                             onTap = openPanel,
@@ -494,6 +512,44 @@ private fun iconFor(t: Tab) = when (t) {
     Tab.SETTINGS -> Icons.Default.Settings
 }
 
+// ---------- Circular play/pause button (mini + expanded) ----------
+
+/**
+ * Filled circular play/pause button. Tap toggles play/pause via [onClick];
+ * long-press stops (when playing) or restarts the focused session from the
+ * beginning (when paused/stopped) via [onLongClick]. Large hit target so it
+ * works half-asleep.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CircularPlayButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    size: Dp,
+    iconSize: Dp,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = if (isPlaying) "Stop" else "Restart from beginning",
+            ),
+    ) {
+        Icon(
+            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            contentDescription = if (isPlaying) "Pause" else "Play",
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
 // ---------- Mini player ----------
 
 @Composable
@@ -503,6 +559,7 @@ private fun MiniPlayer(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onRestart: () -> Unit,
     onResumeLast: () -> Unit,
     onOpenTimer: () -> Unit,
     onTap: () -> Unit,
@@ -564,28 +621,18 @@ private fun MiniPlayer(
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(
+                Spacer(Modifier.size(8.dp))
+                CircularPlayButton(
+                    isPlaying = state.isPlaying,
                     onClick = when {
                         state.isPlaying -> onPause
                         hasPlayback -> onResume
                         else -> onResumeLast
-                    }
-                ) {
-                    Icon(
-                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                if (hasPlayback) {
-                    IconButton(onClick = onStop) {
-                        Icon(
-                            Icons.Default.Stop,
-                            contentDescription = "Stop",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                    },
+                    onLongClick = if (state.isPlaying) onStop else onRestart,
+                    size = 52.dp,
+                    iconSize = 28.dp,
+                )
             }
             // Sleep-timer progress thread
             if (state.timerEndsAt != null && state.timerTotalMs != null && state.timerTotalMs > 0) {
@@ -1207,6 +1254,7 @@ private fun ExpandedPlayer(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onRestart: () -> Unit,
     onOpenTimer: () -> Unit,
     onClose: () -> Unit,
     lastSessionName: String?,
@@ -1427,23 +1475,17 @@ private fun ExpandedPlayer(
                             )
                         }
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = if (state.isPlaying) onPause else onResume) {
-                            Icon(
-                                if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (state.isPlaying) "Pause" else "Play",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        }
-                        IconButton(onClick = onStop) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Stop",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        CircularPlayButton(
+                            isPlaying = state.isPlaying,
+                            onClick = if (state.isPlaying) onPause else onResume,
+                            onLongClick = if (state.isPlaying) onStop else onRestart,
+                            size = 72.dp,
+                            iconSize = 40.dp,
+                        )
                         Spacer(Modifier.weight(1f))
-                        Spacer(Modifier.size(48.dp)) // visual balance for the timer icon
+                        // Balance the leading timer icon so the play button stays
+                        // centered in the row.
+                        Spacer(Modifier.size(48.dp))
                     }
                 }
             }

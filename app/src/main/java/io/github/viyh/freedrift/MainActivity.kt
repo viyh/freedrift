@@ -218,6 +218,7 @@ class MainActivity : ComponentActivity() {
                             reloadScenes()
                         },
                         onPause = { service?.pause() },
+                        onResume = { service?.resume() },
                         onStop = { service?.stop() },
                         onSetTimer = { d -> service?.setSleepTimer(d) },
                         onCancelTimer = { service?.cancelTimer() },
