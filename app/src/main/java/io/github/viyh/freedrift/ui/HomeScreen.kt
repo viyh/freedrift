@@ -3,11 +3,14 @@ package io.github.viyh.freedrift.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -85,6 +88,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.viyh.freedrift.audio.LastSessionRef
 import io.github.viyh.freedrift.audio.Scene
 import io.github.viyh.freedrift.audio.PlaybackState
 import io.github.viyh.freedrift.audio.Playlist
@@ -161,16 +165,21 @@ fun HomeScreen(
     val hasPlayback = state.current != null || state.sceneSession != null
     val showMini = hasPlayback || (state.lastSession != null && lastSessionName != null)
 
-    // If nothing is available to show, ensure the expanded panel is fully closed.
+    var navBarHeightPx by remember { mutableIntStateOf(0) }
+    var miniColHeightPx by remember { mutableIntStateOf(0) }
+
+    // If nothing is available to show, ensure the expanded panel is fully closed
+    // and drop the stale mini-player height so tab content reclaims the space.
     LaunchedEffect(showMini) {
-        if (!showMini && expandProgress.value > 0f) expandProgress.animateTo(0f)
+        if (!showMini) {
+            if (expandProgress.value > 0f) expandProgress.animateTo(0f)
+            miniColHeightPx = 0
+        }
     }
 
     BackHandler(enabled = !isExpanded) {
         if (canGoBack) onBack()
     }
-
-    var navBarHeightPx by remember { mutableIntStateOf(0) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -178,7 +187,12 @@ fun HomeScreen(
             .clipToBounds(),
     ) {
         val totalHeightPx = constraints.maxHeight.toFloat()
-        val panelHeightPx = (totalHeightPx - navBarHeightPx).coerceAtLeast(1f)
+        val statusBarTopPx = WindowInsets.statusBars.getTop(LocalDensity.current)
+        // The drawer lives between the status bar and the nav bar; anchoring it
+        // here means the expanded panel's TopAppBar sits below the status bar
+        // when fully open without any per-Scaffold inset gymnastics.
+        val panelTopPx = statusBarTopPx
+        val panelHeightPx = (totalHeightPx - navBarHeightPx - statusBarTopPx).coerceAtLeast(1f)
 
         val openPanel: () -> Unit = {
             dragScope.launch { expandProgress.animateTo(1f, tween(220)) }
@@ -278,7 +292,10 @@ fun HomeScreen(
                     Tab.values().forEach { t ->
                         NavigationBarItem(
                             selected = tab == t,
-                            onClick = { onTabChange(t) },
+                            onClick = {
+                                onTabChange(t)
+                                closePanel()
+                            },
                             icon = { Icon(iconFor(t), contentDescription = t.label) },
                             label = { Text(t.label, style = MaterialTheme.typography.labelSmall) },
                             colors = NavigationBarItemDefaults.colors(
@@ -299,6 +316,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .background(Color.Black)
                 .padding(pad)
+                .padding(bottom = with(LocalDensity.current) { miniColHeightPx.toDp() })
         ) {
             when (tab) {
                 Tab.SOUNDS -> SoundsTab(
@@ -314,8 +332,6 @@ fun HomeScreen(
                     state = state,
                     onPlayScene = onPlayScene,
                     onEditScene = onEditScene,
-                    onSetLayerVolume = onSetLayerVolume,
-                    onSaveSceneLevels = onSaveSceneLevels,
                 )
                 Tab.PLAYLISTS -> PlaylistsTab(
                     playlists = playlists,
@@ -341,27 +357,42 @@ fun HomeScreen(
         }
     }
 
-        // The drawer area lives above the nav bar. Both the mini-player and the
-        // ExpandedPlayer live inside it; at rest (progress=0) only the mini-player
-        // is visible at the bottom. Dragging up translates the mini-player off
-        // the top while the expanded panel slides up from below in step with it.
+        // Drawer above the nav bar. Size it exactly to panelHeightPx pixels via
+        // Modifier.layout so its measured height can't drift from the pixel value
+        // we use for positioning (dp<->px rounding would otherwise leave a 1px
+        // gap between the mini-player and the expanded panel mid-drag).
         if (showMini || expandProgress.value > 0f) {
-            val panelHeightDp = with(LocalDensity.current) { panelHeightPx.toDp() }
+            val panelHeightInt = panelHeightPx.toInt()
+            val boundaryY = ((1f - expandProgress.value) * panelHeightPx).roundToInt()
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart)
-                    .height(panelHeightDp)
+                    .offset { IntOffset(0, panelTopPx) }
+                    .layout { measurable, incomingConstraints ->
+                        val placeable = measurable.measure(
+                            incomingConstraints.copy(
+                                minHeight = panelHeightInt,
+                                maxHeight = panelHeightInt,
+                            )
+                        )
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    }
                     .clipToBounds(),
             ) {
-                // Expanded panel: anchored to the top of the drawer area and pushed
-                // down by (1 - progress) * panelHeight at rest, so it sits flush
-                // below the mini-player as you drag.
+                // Expanded panel: anchored to the top of the drawer, pushed down
+                // by (1 - progress) * panelHeight at rest so only the mini-player
+                // strip above it is visible until the user drags up.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .offset { IntOffset(0, ((1f - expandProgress.value) * panelHeightPx).toInt()) },
+                        .offset { IntOffset(0, boundaryY) },
                 ) {
+                    val focusedSound = state.current
+                        ?: state.lastSession
+                            ?.takeIf { it.kind == LastSessionRef.Kind.SOUND }
+                            ?.let { ref -> sounds.firstOrNull { it.id == ref.targetId } }
                     ExpandedPlayer(
                         state = state,
                         appVolume = appVolume,
@@ -378,19 +409,23 @@ fun HomeScreen(
                         onClose = closePanel,
                         lastSessionName = lastSessionName,
                         dragModifier = expandedDragModifier,
+                        soundSettings = soundSettings,
+                        onSetSoundSettings = onSetSoundSettings,
+                        focusedSound = focusedSound,
                     )
                 }
 
-                // Mini-player: anchored to the bottom of the drawer area, offset
-                // upward by progress * panelHeight so it leaves the top edge at
-                // progress=1 (fully expanded) while tracking the expanded panel's
-                // top edge at every point in between.
+                // Mini-player: anchored to the bottom of the drawer, offset up
+                // by progress * panelHeight so its bottom tracks the top of the
+                // expanded panel exactly at every drag position.
                 if (showMini) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomStart)
-                            .offset { IntOffset(0, (-expandProgress.value * panelHeightPx).toInt()) },
+                            .offset { IntOffset(0, boundaryY - panelHeightInt) }
+                            .background(Color.Black)
+                            .onSizeChanged { miniColHeightPx = it.height },
                     ) {
                         HorizontalDivider(
                             thickness = 2.dp,
@@ -796,8 +831,6 @@ private fun ScenesTab(
     state: PlaybackState,
     onPlayScene: (Scene) -> Unit,
     onEditScene: (Scene) -> Unit,
-    onSetLayerVolume: (Int, Float) -> Unit,
-    onSaveSceneLevels: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -805,32 +838,6 @@ private fun ScenesTab(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        state.sceneSession?.let { session ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(
-                        session.scene.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    LayerSliderBank(
-                        layers = session.scene.layers,
-                        editable = false,
-                        currentVolumes = session.currentVolumes,
-                        onVolumeChange = onSetLayerVolume,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row {
-                        TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
-                    }
-                }
-            }
-        }
-
         if (scenes.isEmpty()) {
             EmptyState("No scenes yet.\nA scene is a layered bundle of sounds — rain, wind, distant thunder, etc. — each with its own volume. Tap + to build one.")
             return
@@ -838,7 +845,6 @@ private fun ScenesTab(
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(bottom = 80.dp),
         ) {
             items(scenes, key = { it.id }) { scene ->
                 val isActive = state.sceneSession?.scene?.id == scene.id
@@ -1124,6 +1130,9 @@ private fun ExpandedPlayer(
     onClose: () -> Unit,
     lastSessionName: String?,
     dragModifier: Modifier,
+    soundSettings: Map<String, SoundSettings>,
+    onSetSoundSettings: (String, SoundSettings) -> Unit,
+    focusedSound: SoundSource?,
 ) {
     val title = when {
         state.sceneSession != null -> state.sceneSession.scene.name
@@ -1142,6 +1151,10 @@ private fun ExpandedPlayer(
 
     Scaffold(
         containerColor = Color.Black,
+        // Drawer lives below the outer Scaffold's status-bar area, so don't
+        // re-apply the window insets here — otherwise the TopAppBar is pushed
+        // down by the inset height and a visible gap appears above it.
+        contentWindowInsets = WindowInsets(0),
         topBar = {
             Column {
                 TopAppBar(
@@ -1156,6 +1169,7 @@ private fun ExpandedPlayer(
                             )
                         }
                     },
+                    windowInsets = WindowInsets(0),
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Black,
                         titleContentColor = MaterialTheme.colorScheme.onBackground,
@@ -1196,6 +1210,71 @@ private fun ExpandedPlayer(
                         onVolumeChange = onSetLayerVolume,
                     )
                     TextButton(onClick = onSaveSceneLevels) { Text("Save current levels as default") }
+                } else if (focusedSound != null) {
+                    val current = focusedSound
+                    val settings = soundSettings[current.id] ?: SoundSettings()
+                    val intermittent = settings.mode == SoundSettings.Mode.INTERMITTENT
+                    var gapDialogOpen by remember(current.id) { mutableStateOf(false) }
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    if (intermittent) "Intermittent" else "Continuous",
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Text(
+                                    if (intermittent)
+                                        "Plays in bursts with a silent gap between"
+                                    else "Plays as a continuous loop",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            // Slider icon is always present so the row height
+                            // doesn't jump between modes; it's only visible and
+                            // interactive in intermittent mode.
+                            IconButton(
+                                onClick = { gapDialogOpen = true },
+                                enabled = intermittent,
+                                modifier = Modifier.alpha(if (intermittent) 1f else 0f),
+                            ) {
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = "Adjust gap",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            ModeChip(
+                                settings = settings,
+                                onToggle = {
+                                    val next = if (intermittent)
+                                        settings.copy(mode = SoundSettings.Mode.CONTINUOUS)
+                                    else settings.copy(mode = SoundSettings.Mode.INTERMITTENT)
+                                    onSetSoundSettings(current.id, next)
+                                },
+                                onLongPressIfIntermittent = { gapDialogOpen = true },
+                            )
+                        }
+                    }
+                    if (gapDialogOpen) {
+                        GapSliderDialog(
+                            soundName = current.displayName,
+                            initial = settings.minGapSec,
+                            onConfirm = { newMin ->
+                                onSetSoundSettings(current.id, settings.copy(minGapSec = newMin))
+                                gapDialogOpen = false
+                            },
+                            onDismiss = { gapDialogOpen = false },
+                        )
+                    }
                 }
             }
 
