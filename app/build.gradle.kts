@@ -4,6 +4,23 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Short git SHA + dirty marker, resolved once per build invocation. Shown in the
+// About card so it's obvious whether the installed APK matches HEAD.
+fun gitRevision(): String {
+    // Bypass git's "dubious ownership" refusal when the repo is bind-mounted
+    // from macOS into the build container (host uid != container root uid).
+    fun git(vararg args: String): String = try {
+        ProcessBuilder(listOf("git", "-c", "safe.directory=*") + args.toList())
+            .redirectErrorStream(true)
+            .start()
+            .inputStream.bufferedReader().readText().trim()
+    } catch (_: Exception) { "" }
+
+    val sha = git("rev-parse", "--short", "HEAD").ifBlank { return "unknown" }
+    val dirty = git("status", "--porcelain").isNotBlank()
+    return if (dirty) "$sha-dirty" else sha
+}
+
 android {
     namespace = "io.github.viyh.freedrift"
     compileSdk = 35
@@ -14,6 +31,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "GIT_REVISION", "\"${gitRevision()}\"")
     }
 
     buildFeatures {

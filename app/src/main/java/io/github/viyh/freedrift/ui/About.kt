@@ -131,6 +131,7 @@ fun AboutCard() {
             }
             Spacer(Modifier.height(16.dp))
             AboutMetaRow("Version", APP_VERSION)
+            AboutMetaRow("Build", BuildConfig.GIT_REVISION)
             AboutMetaRow("Author", APP_AUTHOR)
             AboutMetaRow("License", APP_LICENSE)
             Spacer(Modifier.height(16.dp))
