@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -64,6 +65,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -74,8 +76,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -397,6 +402,7 @@ fun HomeScreen(
                 )
                 Tab.SCENES -> ScenesTab(
                     scenes = scenes,
+                    sounds = sounds,
                     state = state,
                     onPlayScene = onPlayScene,
                     onEditScene = onEditScene,
@@ -404,6 +410,8 @@ fun HomeScreen(
                 )
                 Tab.PLAYLISTS -> PlaylistsTab(
                     playlists = playlists,
+                    sounds = sounds,
+                    scenes = scenes,
                     state = state,
                     onPlayPlaylist = onPlayPlaylist,
                     onEditPlaylist = onEditPlaylist,
@@ -968,11 +976,13 @@ private fun formatSeconds(s: Int): String {
 @Composable
 private fun ScenesTab(
     scenes: List<Scene>,
+    sounds: List<SoundSource>,
     state: PlaybackState,
     onPlayScene: (Scene) -> Unit,
     onEditScene: (Scene) -> Unit,
     onReorderScenes: (List<Scene>) -> Unit,
 ) {
+    val soundIds = remember(sounds) { sounds.mapTo(HashSet(sounds.size)) { it.id } }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1025,6 +1035,10 @@ private fun ScenesTab(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            val missing = scene.layers.any { it.soundId !in soundIds }
+                            if (missing) {
+                                MissingRefWarning("This scene references a sound that's no longer available. Edit to fix.")
+                            }
                             IconButton(onClick = { onEditScene(scene) }) {
                                 Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                             }
@@ -1041,10 +1055,14 @@ private fun ScenesTab(
 @Composable
 private fun PlaylistsTab(
     playlists: List<Playlist>,
+    sounds: List<SoundSource>,
+    scenes: List<Scene>,
     state: PlaybackState,
     onPlayPlaylist: (Playlist) -> Unit,
     onEditPlaylist: (Playlist) -> Unit,
 ) {
+    val soundIds = remember(sounds) { sounds.mapTo(HashSet(sounds.size)) { it.id } }
+    val sceneIds = remember(scenes) { scenes.mapTo(HashSet(scenes.size)) { it.id } }
     if (playlists.isEmpty()) {
         EmptyState("No playlists yet.\nTap + to create one. Pick sounds, set how long each should play before fading into the next.")
         return
@@ -1081,11 +1099,40 @@ private fun PlaylistsTab(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    val missing = p.entries.any { e ->
+                        if (e.isScene) e.sceneId !in sceneIds
+                        else e.soundId !in soundIds
+                    }
+                    if (missing) {
+                        MissingRefWarning("This playlist references an item that's no longer available. Edit to fix.")
+                    }
                     IconButton(onClick = { onEditPlaylist(p) }) {
                         Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
+        }
+    }
+}
+
+// ---------- Missing-ref warning badge on scene/playlist rows ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MissingRefWarning(message: String) {
+    val tooltipState = rememberTooltipState(isPersistent = false)
+    val scope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(message) } },
+        state = tooltipState,
+    ) {
+        IconButton(onClick = { scope.launch { tooltipState.show() } }) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = message,
+                tint = Color(0xFFE6B800),
+            )
         }
     }
 }
