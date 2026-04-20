@@ -78,12 +78,35 @@ class MainActivity : ComponentActivity() {
     private val _batteryExempt = MutableStateFlow(false)
     val batteryExempt: StateFlow<Boolean> = _batteryExempt.asStateFlow()
 
+    private val _autoResumeOnLaunch = MutableStateFlow(false)
+    val autoResumeOnLaunch: StateFlow<Boolean> = _autoResumeOnLaunch.asStateFlow()
+
+    private val _hapticFeedback = MutableStateFlow(true)
+    val hapticFeedback: StateFlow<Boolean> = _hapticFeedback.asStateFlow()
+
+    private val _screenDimWhilePlaying = MutableStateFlow(false)
+    val screenDimWhilePlaying: StateFlow<Boolean> = _screenDimWhilePlaying.asStateFlow()
+
+    // Set only on the very first service bind within an Activity instance so
+    // the auto-resume check fires once per app launch rather than every onStart
+    // (which would re-trigger playback when the user returns from Settings).
+    private var autoResumeChecked = false
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val s = (binder as PlaybackService.LocalBinder).service()
             service = s
             lifecycleScope.launch {
                 s.state.collect { _state.value = it }
+            }
+            if (!autoResumeChecked) {
+                autoResumeChecked = true
+                if (AppSettings.autoResumeOnLaunch(this@MainActivity)) {
+                    val ref = AppSettings.lastSession(this@MainActivity)
+                    if (ref != null && s.state.value.current == null && s.state.value.sceneSession == null) {
+                        resumeLastSession(ref)
+                    }
+                }
             }
         }
 
@@ -102,6 +125,9 @@ class MainActivity : ComponentActivity() {
         _fadeInSec.value = AppSettings.fadeInSeconds(this)
         _timerFadeOutSec.value = AppSettings.timerFadeOutSeconds(this)
         _soundSettings.value = SoundSettingsRepository.all(this)
+        _autoResumeOnLaunch.value = AppSettings.autoResumeOnLaunch(this)
+        _hapticFeedback.value = AppSettings.hapticFeedback(this)
+        _screenDimWhilePlaying.value = AppSettings.screenDimWhilePlaying(this)
 
         setContent {
             FreeDriftTheme {
@@ -167,6 +193,10 @@ class MainActivity : ComponentActivity() {
                         timerFadeOutSeconds = timerFadeOutSec.collectAsState().value,
                         appVolume = st.appVolume,
                         duckOnNotifications = st.duckOnNotifications,
+                        pauseOnAudioDisconnect = st.pauseOnAudioDisconnect,
+                        autoResumeOnLaunch = autoResumeOnLaunch.collectAsState().value,
+                        hapticFeedback = hapticFeedback.collectAsState().value,
+                        screenDimWhilePlaying = screenDimWhilePlaying.collectAsState().value,
                         lastSessionName = resolveLastSessionName(st.lastSession, snd, pls, scn),
                         onResumeLastSession = { resumeLastSession(st.lastSession) },
                         onSetCrossfadeSeconds = { secs ->
@@ -183,6 +213,19 @@ class MainActivity : ComponentActivity() {
                         },
                         onSetAppVolume = { v -> service?.setAppVolume(v) },
                         onSetDuckOnNotifications = { v -> service?.setDuckOnNotifications(v) },
+                        onSetPauseOnAudioDisconnect = { v -> service?.setPauseOnAudioDisconnect(v) },
+                        onSetAutoResumeOnLaunch = { v ->
+                            AppSettings.setAutoResumeOnLaunch(this, v)
+                            _autoResumeOnLaunch.value = v
+                        },
+                        onSetHapticFeedback = { v ->
+                            AppSettings.setHapticFeedback(this, v)
+                            _hapticFeedback.value = v
+                        },
+                        onSetScreenDimWhilePlaying = { v ->
+                            AppSettings.setScreenDimWhilePlaying(this, v)
+                            _screenDimWhilePlaying.value = v
+                        },
                         onPlay = { source ->
                             ContextCompat.startForegroundService(
                                 this,
@@ -208,6 +251,10 @@ class MainActivity : ComponentActivity() {
                         },
                         onEditScene = { editor = EditorTarget.SceneEdit(it) },
                         onNewScene = { editor = EditorTarget.SceneEdit(null) },
+                        onReorderScenes = { newOrder ->
+                            SceneRepository.save(this, newOrder)
+                            reloadScenes()
+                        },
                         onSetLayerVolume = { idx, v -> service?.setLayerVolume(idx, v) },
                         onSaveSceneLevels = {
                             service?.saveSceneLevels()

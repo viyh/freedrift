@@ -20,6 +20,12 @@ data class PlaylistEntry(
     /** Cached so the entry still shows something if the source vanishes. */
     val displayName: String,
     val durationMinutes: Int,
+    /**
+     * Stable identity for in-memory list operations (drag-reorder, LazyColumn
+     * keys). Not serialized — regenerated on load. A playlist can legitimately
+     * contain the same soundId twice, so we can't key by that alone.
+     */
+    val localKey: String = UUID.randomUUID().toString(),
 ) {
     val isScene: Boolean get() = soundId.startsWith("scene:")
     val sceneId: String? get() = if (isScene) soundId.removePrefix("scene:") else null

@@ -30,12 +30,28 @@ android {
         jvmTarget = "17"
     }
 
+    signingConfigs {
+        // Reuse the Android SDK debug keystore for release builds too. Fine for
+        // personal sideload sharing — same install UX as debug, no new warnings.
+        // Do NOT use this key for any public distribution.
+        create("debugShared") {
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            // Resource shrinking needs its own big JVM pass on top of R8.
+            // Skip it — the code minifier does the heavy lifting anyway.
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debugShared")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -69,4 +85,6 @@ dependencies {
     implementation("androidx.media3:media3-common:1.4.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    implementation("sh.calvin.reorderable:reorderable:2.4.3")
 }

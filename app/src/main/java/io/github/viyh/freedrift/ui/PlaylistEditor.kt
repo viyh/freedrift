@@ -16,13 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,6 +57,9 @@ import io.github.viyh.freedrift.audio.Playlist
 import io.github.viyh.freedrift.audio.Scene
 import io.github.viyh.freedrift.audio.PlaylistEntry
 import io.github.viyh.freedrift.audio.SoundSource
+import sh.calvin.reorderable.ReorderableCollectionItemScope
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +115,15 @@ fun PlaylistEditorScreen(
                 TextButton(onClick = { showAdd = true }) { Text("+ Add") }
             }
 
+            val lazyListState = rememberLazyListState()
+            val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                entries = entries.toMutableList().apply {
+                    add(to.index, removeAt(from.index))
+                }
+            }
+
             LazyColumn(
+                state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.weight(1f),
@@ -126,30 +137,21 @@ fun PlaylistEditorScreen(
                         )
                     }
                 }
-                itemsIndexed(entries, key = { i, e -> "$i:${e.soundId}" }) { idx, entry ->
-                    EntryRow(
-                        entry = entry,
-                        canUp = idx > 0,
-                        canDown = idx < entries.size - 1,
-                        onUp = {
-                            entries = entries.toMutableList().also {
-                                val tmp = it[idx - 1]; it[idx - 1] = it[idx]; it[idx] = tmp
-                            }
-                        },
-                        onDown = {
-                            entries = entries.toMutableList().also {
-                                val tmp = it[idx + 1]; it[idx + 1] = it[idx]; it[idx] = tmp
-                            }
-                        },
-                        onChangeDuration = { newDur ->
-                            entries = entries.toMutableList().also {
-                                it[idx] = entry.copy(durationMinutes = newDur)
-                            }
-                        },
-                        onDelete = {
-                            entries = entries.toMutableList().also { it.removeAt(idx) }
-                        },
-                    )
+                items(entries, key = { it.localKey }) { entry ->
+                    ReorderableItem(reorderState, key = entry.localKey) {
+                        EntryRow(
+                            entry = entry,
+                            onChangeDuration = { newDur ->
+                                entries = entries.toMutableList().also { list ->
+                                    val i = list.indexOfFirst { it.localKey == entry.localKey }
+                                    if (i >= 0) list[i] = entry.copy(durationMinutes = newDur)
+                                }
+                            },
+                            onDelete = {
+                                entries = entries.filterNot { it.localKey == entry.localKey }
+                            },
+                        )
+                    }
                 }
             }
 
@@ -200,12 +202,8 @@ fun PlaylistEditorScreen(
 }
 
 @Composable
-private fun EntryRow(
+private fun ReorderableCollectionItemScope.EntryRow(
     entry: PlaylistEntry,
-    canUp: Boolean,
-    canDown: Boolean,
-    onUp: () -> Unit,
-    onDown: () -> Unit,
     onChangeDuration: (Int) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -219,6 +217,19 @@ private fun EntryRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(
+                Icons.Default.DragIndicator,
+                contentDescription = "Drag to reorder",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.draggableHandle(),
+            )
+            Spacer(Modifier.size(8.dp))
+            Icon(
+                if (entry.isScene) Icons.Default.GraphicEq else Icons.Default.MusicNote,
+                contentDescription = if (entry.isScene) "Scene" else "Sound",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(entry.displayName, color = MaterialTheme.colorScheme.onBackground)
             }
@@ -235,12 +246,6 @@ private fun EntryRow(
                     keyboardType = KeyboardType.Number
                 ),
             )
-            IconButton(onClick = onUp, enabled = canUp) {
-                Icon(Icons.Default.ArrowUpward, "Move up", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = onDown, enabled = canDown) {
-                Icon(Icons.Default.ArrowDownward, "Move down", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

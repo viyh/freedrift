@@ -13,6 +13,10 @@ object AppSettings {
     private const val KEY_TIMER_FADE_OUT_SEC = "timer_fade_out_sec"
     private const val KEY_APP_VOLUME = "app_volume"
     private const val KEY_DUCK_ON_NOTIFICATIONS = "duck_on_notifications"
+    private const val KEY_PAUSE_ON_AUDIO_DISCONNECT = "pause_on_audio_disconnect"
+    private const val KEY_AUTO_RESUME_ON_LAUNCH = "auto_resume_on_launch"
+    private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
+    private const val KEY_SCREEN_DIM_WHILE_PLAYING = "screen_dim_while_playing"
     private const val KEY_LAST_SESSION = "last_session"
     private const val KEY_STARTERS_SEEDED = "starters_seeded"
     private const val KEY_STARTERS_SEEDED_VERSION = "starters_seeded_version"
@@ -22,6 +26,10 @@ object AppSettings {
     private const val DEFAULT_TIMER_FADE_OUT_SEC = 30
     private const val DEFAULT_APP_VOLUME = 1f
     private const val DEFAULT_DUCK_ON_NOTIFICATIONS = false
+    private const val DEFAULT_PAUSE_ON_AUDIO_DISCONNECT = true
+    private const val DEFAULT_AUTO_RESUME_ON_LAUNCH = true
+    private const val DEFAULT_HAPTIC_FEEDBACK = true
+    private const val DEFAULT_SCREEN_DIM_WHILE_PLAYING = false
 
     const val MAX_CROSSFADE_SEC = 30
     const val MAX_FADE_IN_SEC = 30
@@ -63,6 +71,34 @@ object AppSettings {
 
     fun setDuckOnNotifications(c: Context, v: Boolean) {
         prefs(c).edit().putBoolean(KEY_DUCK_ON_NOTIFICATIONS, v).apply()
+    }
+
+    fun pauseOnAudioDisconnect(c: Context): Boolean =
+        prefs(c).getBoolean(KEY_PAUSE_ON_AUDIO_DISCONNECT, DEFAULT_PAUSE_ON_AUDIO_DISCONNECT)
+
+    fun setPauseOnAudioDisconnect(c: Context, v: Boolean) {
+        prefs(c).edit().putBoolean(KEY_PAUSE_ON_AUDIO_DISCONNECT, v).apply()
+    }
+
+    fun autoResumeOnLaunch(c: Context): Boolean =
+        prefs(c).getBoolean(KEY_AUTO_RESUME_ON_LAUNCH, DEFAULT_AUTO_RESUME_ON_LAUNCH)
+
+    fun setAutoResumeOnLaunch(c: Context, v: Boolean) {
+        prefs(c).edit().putBoolean(KEY_AUTO_RESUME_ON_LAUNCH, v).apply()
+    }
+
+    fun hapticFeedback(c: Context): Boolean =
+        prefs(c).getBoolean(KEY_HAPTIC_FEEDBACK, DEFAULT_HAPTIC_FEEDBACK)
+
+    fun setHapticFeedback(c: Context, v: Boolean) {
+        prefs(c).edit().putBoolean(KEY_HAPTIC_FEEDBACK, v).apply()
+    }
+
+    fun screenDimWhilePlaying(c: Context): Boolean =
+        prefs(c).getBoolean(KEY_SCREEN_DIM_WHILE_PLAYING, DEFAULT_SCREEN_DIM_WHILE_PLAYING)
+
+    fun setScreenDimWhilePlaying(c: Context, v: Boolean) {
+        prefs(c).edit().putBoolean(KEY_SCREEN_DIM_WHILE_PLAYING, v).apply()
     }
 
     /** Serialized "kind:targetId" e.g. "sound:asset:rain.ogg", "playlist:<uuid>", "scene:<uuid>". */

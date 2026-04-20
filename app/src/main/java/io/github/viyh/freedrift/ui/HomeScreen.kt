@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Timelapse
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
@@ -73,6 +77,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +85,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,6 +105,8 @@ import io.github.viyh.freedrift.audio.SoundSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
@@ -122,11 +130,19 @@ fun HomeScreen(
     timerFadeOutSeconds: Int,
     appVolume: Float,
     duckOnNotifications: Boolean,
+    pauseOnAudioDisconnect: Boolean,
+    autoResumeOnLaunch: Boolean,
+    hapticFeedback: Boolean,
+    screenDimWhilePlaying: Boolean,
     onSetCrossfadeSeconds: (Int) -> Unit,
     onSetFadeInSeconds: (Int) -> Unit,
     onSetTimerFadeOutSeconds: (Int) -> Unit,
     onSetAppVolume: (Float) -> Unit,
     onSetDuckOnNotifications: (Boolean) -> Unit,
+    onSetPauseOnAudioDisconnect: (Boolean) -> Unit,
+    onSetAutoResumeOnLaunch: (Boolean) -> Unit,
+    onSetHapticFeedback: (Boolean) -> Unit,
+    onSetScreenDimWhilePlaying: (Boolean) -> Unit,
     onResumeLastSession: () -> Unit,
     lastSessionName: String?,
     onPlay: (SoundSource) -> Unit,
@@ -136,6 +152,7 @@ fun HomeScreen(
     onPlayScene: (Scene) -> Unit,
     onEditScene: (Scene) -> Unit,
     onNewScene: () -> Unit,
+    onReorderScenes: (List<Scene>) -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
     onSaveSceneLevels: () -> Unit,
     onUpdateSceneDefaults: (Scene) -> Unit,
@@ -157,6 +174,35 @@ fun HomeScreen(
 ) {
     var timerDialogOpen by remember { mutableStateOf(false) }
     var batteryTipDismissed by rememberSaveable { mutableStateOf(false) }
+
+    // Screen-dim mode: keep the window awake but drop its brightness far below
+    // normal, so the phone can play at bedside without auto-locking or lighting
+    // up the room. Only active while something is actually playing.
+    val window = (LocalContext.current as? android.app.Activity)?.window
+    val isPlaying = state.isPlaying
+    DisposableEffect(window, screenDimWhilePlaying, isPlaying) {
+        val w = window
+        val dim = screenDimWhilePlaying && isPlaying
+        if (w != null) {
+            val lp = w.attributes
+            lp.screenBrightness = if (dim) 0.02f
+            else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            w.attributes = lp
+            if (dim) {
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+        onDispose {
+            w?.let {
+                val lp = it.attributes
+                lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                it.attributes = lp
+                it.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
 
     // Single drag-progress that drives the Now Playing transition: 0 = closed
     // (off-screen, below), 1 = fully open. Swipe-up on the mini-player and
@@ -354,6 +400,7 @@ fun HomeScreen(
                     state = state,
                     onPlayScene = onPlayScene,
                     onEditScene = onEditScene,
+                    onReorderScenes = onReorderScenes,
                 )
                 Tab.PLAYLISTS -> PlaylistsTab(
                     playlists = playlists,
@@ -365,13 +412,19 @@ fun HomeScreen(
                     crossfadeSeconds = crossfadeSeconds,
                     fadeInSeconds = fadeInSeconds,
                     timerFadeOutSeconds = timerFadeOutSeconds,
-                    appVolume = appVolume,
                     duckOnNotifications = duckOnNotifications,
+                    pauseOnAudioDisconnect = pauseOnAudioDisconnect,
+                    autoResumeOnLaunch = autoResumeOnLaunch,
+                    hapticFeedback = hapticFeedback,
+                    screenDimWhilePlaying = screenDimWhilePlaying,
                     onSetCrossfadeSeconds = onSetCrossfadeSeconds,
                     onSetFadeInSeconds = onSetFadeInSeconds,
                     onSetTimerFadeOutSeconds = onSetTimerFadeOutSeconds,
-                    onSetAppVolume = onSetAppVolume,
                     onSetDuckOnNotifications = onSetDuckOnNotifications,
+                    onSetPauseOnAudioDisconnect = onSetPauseOnAudioDisconnect,
+                    onSetAutoResumeOnLaunch = onSetAutoResumeOnLaunch,
+                    onSetHapticFeedback = onSetHapticFeedback,
+                    onSetScreenDimWhilePlaying = onSetScreenDimWhilePlaying,
                     isBatteryExempt = isBatteryExempt,
                     onRequestBatteryExemption = onRequestBatteryExemption,
                 )
@@ -424,6 +477,7 @@ fun HomeScreen(
                     ExpandedPlayer(
                         state = state,
                         appVolume = appVolume,
+                        hapticsEnabled = hapticFeedback,
                         onSetAppVolume = onSetAppVolume,
                         onSetLayerVolume = onSetLayerVolume,
                         onSaveSceneLevels = onSaveSceneLevels,
@@ -470,6 +524,7 @@ fun HomeScreen(
                         MiniPlayer(
                             state = state,
                             lastSessionName = lastSessionName,
+                            hapticsEnabled = hapticFeedback,
                             onPause = onPause,
                             onResume = onResume,
                             onStop = onStop,
@@ -524,11 +579,13 @@ private fun iconFor(t: Tab) = when (t) {
 @Composable
 private fun CircularPlayButton(
     isPlaying: Boolean,
+    hapticsEnabled: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     size: Dp,
     iconSize: Dp,
 ) {
+    val haptics = LocalHapticFeedback.current
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -536,8 +593,18 @@ private fun CircularPlayButton(
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
+                onClick = {
+                    if (hapticsEnabled) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    onClick()
+                },
+                onLongClick = {
+                    if (hapticsEnabled) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    onLongClick()
+                },
                 onLongClickLabel = if (isPlaying) "Stop" else "Restart from beginning",
             ),
     ) {
@@ -556,6 +623,7 @@ private fun CircularPlayButton(
 private fun MiniPlayer(
     state: PlaybackState,
     lastSessionName: String?,
+    hapticsEnabled: Boolean,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
@@ -624,6 +692,7 @@ private fun MiniPlayer(
                 Spacer(Modifier.size(8.dp))
                 CircularPlayButton(
                     isPlaying = state.isPlaying,
+                    hapticsEnabled = hapticsEnabled,
                     onClick = when {
                         state.isPlaying -> onPause
                         hasPlayback -> onResume
@@ -768,12 +837,6 @@ private fun SoundsTab(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.size(12.dp))
                     Text(
                         s.displayName,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -908,6 +971,7 @@ private fun ScenesTab(
     state: PlaybackState,
     onPlayScene: (Scene) -> Unit,
     onEditScene: (Scene) -> Unit,
+    onReorderScenes: (List<Scene>) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -920,38 +984,50 @@ private fun ScenesTab(
             return
         }
 
+        val lazyListState = rememberLazyListState()
+        val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            val updated = scenes.toMutableList().apply {
+                add(to.index, removeAt(from.index))
+            }
+            onReorderScenes(updated)
+        }
+
         LazyColumn(
+            state = lazyListState,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(scenes, key = { it.id }) { scene ->
-                val isActive = state.sceneSession?.scene?.id == scene.id
-                Surface(
-                    onClick = { onPlayScene(scene) },
-                    color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
-                    else MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                ReorderableItem(reorderState, key = scene.id) {
+                    val isActive = state.sceneSession?.scene?.id == scene.id
+                    Surface(
+                        onClick = { onPlayScene(scene) },
+                        color = if (isActive) MaterialTheme.colorScheme.surfaceVariant
+                        else MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(
-                            Icons.Default.GraphicEq,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.size(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(scene.name, color = MaterialTheme.colorScheme.onBackground)
-                            Text(
-                                "${scene.layers.size} layers",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.DragIndicator,
+                                contentDescription = "Drag to reorder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.draggableHandle(),
                             )
-                        }
-                        IconButton(onClick = { onEditScene(scene) }) {
-                            Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.size(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(scene.name, color = MaterialTheme.colorScheme.onBackground)
+                                Text(
+                                    "${scene.layers.size} layers",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { onEditScene(scene) }) {
+                                Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }
@@ -991,12 +1067,6 @@ private fun PlaylistsTab(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.LibraryMusic,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.name, color = MaterialTheme.colorScheme.onBackground)
                         val subtitle = buildString {
@@ -1074,13 +1144,19 @@ private fun SettingsTab(
     crossfadeSeconds: Int,
     fadeInSeconds: Int,
     timerFadeOutSeconds: Int,
-    appVolume: Float,
     duckOnNotifications: Boolean,
+    pauseOnAudioDisconnect: Boolean,
+    autoResumeOnLaunch: Boolean,
+    hapticFeedback: Boolean,
+    screenDimWhilePlaying: Boolean,
     onSetCrossfadeSeconds: (Int) -> Unit,
     onSetFadeInSeconds: (Int) -> Unit,
     onSetTimerFadeOutSeconds: (Int) -> Unit,
-    onSetAppVolume: (Float) -> Unit,
     onSetDuckOnNotifications: (Boolean) -> Unit,
+    onSetPauseOnAudioDisconnect: (Boolean) -> Unit,
+    onSetAutoResumeOnLaunch: (Boolean) -> Unit,
+    onSetHapticFeedback: (Boolean) -> Unit,
+    onSetScreenDimWhilePlaying: (Boolean) -> Unit,
     isBatteryExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
 ) {
@@ -1116,62 +1192,36 @@ private fun SettingsTab(
             }
         }
 
-        // App volume
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Row {
-                    Text(
-                        "Volume",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text("${(appVolume * 100).roundToInt()}%", color = MaterialTheme.colorScheme.primary)
-                }
-                Text(
-                    "App-only level, separate from the phone's media volume.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = appVolume,
-                    onValueChange = onSetAppVolume,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                    )
-                )
-            }
-        }
-
-        // Duck on notifications
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Duck during notifications",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    Text(
-                        "When a notification sound plays, lower the volume instead of pausing.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = duckOnNotifications, onCheckedChange = onSetDuckOnNotifications)
-            }
-        }
+        SwitchSettingCard(
+            title = "Duck during notifications",
+            description = "When a notification sound plays, lower the volume instead of pausing.",
+            checked = duckOnNotifications,
+            onCheckedChange = onSetDuckOnNotifications,
+        )
+        SwitchSettingCard(
+            title = "Pause when headphones disconnect",
+            description = "Pause playback instead of switching to the phone speaker when earbuds or Bluetooth drop.",
+            checked = pauseOnAudioDisconnect,
+            onCheckedChange = onSetPauseOnAudioDisconnect,
+        )
+        SwitchSettingCard(
+            title = "Resume last session on launch",
+            description = "Automatically start playing the last sound or scene when you open the app.",
+            checked = autoResumeOnLaunch,
+            onCheckedChange = onSetAutoResumeOnLaunch,
+        )
+        SwitchSettingCard(
+            title = "Haptic feedback",
+            description = "Vibration tick when tapping or long-pressing the play/pause button.",
+            checked = hapticFeedback,
+            onCheckedChange = onSetHapticFeedback,
+        )
+        SwitchSettingCard(
+            title = "Keep screen dim while playing",
+            description = "Keep the screen on but very dim while playback runs, so the phone can sit bedside without auto-locking or lighting up the room.",
+            checked = screenDimWhilePlaying,
+            onCheckedChange = onSetScreenDimWhilePlaying,
+        )
 
         SecondsSettingCard(
             title = "Fade in",
@@ -1196,6 +1246,38 @@ private fun SettingsTab(
         )
 
         AboutCard()
+    }
+}
+
+@Composable
+private fun SwitchSettingCard(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
     }
 }
 
@@ -1248,6 +1330,7 @@ private fun SecondsSettingCard(
 private fun ExpandedPlayer(
     state: PlaybackState,
     appVolume: Float,
+    hapticsEnabled: Boolean,
     onSetAppVolume: (Float) -> Unit,
     onSetLayerVolume: (Int, Float) -> Unit,
     onSaveSceneLevels: () -> Unit,
@@ -1452,6 +1535,7 @@ private fun ExpandedPlayer(
                             ),
                             modifier = Modifier.weight(1f),
                         )
+                        Spacer(Modifier.size(4.dp))
                         Text(
                             "${(appVolume * 100).roundToInt()}%",
                             color = MaterialTheme.colorScheme.primary,
@@ -1477,6 +1561,7 @@ private fun ExpandedPlayer(
                         Spacer(Modifier.weight(1f))
                         CircularPlayButton(
                             isPlaying = state.isPlaying,
+                            hapticsEnabled = hapticsEnabled,
                             onClick = if (state.isPlaying) onPause else onResume,
                             onLongClick = if (state.isPlaying) onStop else onRestart,
                             size = 72.dp,

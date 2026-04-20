@@ -126,6 +126,7 @@ class PlaybackService : LifecycleService() {
     private val intermittentJobs = mutableMapOf<ExoPlayer, Job>()
     private var appVolume: Float = 1f
     private var duckOnNotifications: Boolean = false
+    private var pauseOnAudioDisconnect: Boolean = true
 
     var fadeInDuration: Duration = 1.seconds
     var crossfadeDuration: Duration = 8.seconds
@@ -139,10 +140,12 @@ class PlaybackService : LifecycleService() {
         timerFadeOutDuration = AppSettings.timerFadeOutSeconds(this).seconds
         appVolume = AppSettings.appVolume(this)
         duckOnNotifications = AppSettings.duckOnNotifications(this)
+        pauseOnAudioDisconnect = AppSettings.pauseOnAudioDisconnect(this)
         _state.update {
             it.copy(
                 appVolume = appVolume,
                 duckOnNotifications = duckOnNotifications,
+                pauseOnAudioDisconnect = pauseOnAudioDisconnect,
                 lastSession = AppSettings.lastSession(this),
             )
         }
@@ -161,7 +164,7 @@ class PlaybackService : LifecycleService() {
                 .build(),
             false,
         )
-        .setHandleAudioBecomingNoisy(false)
+        .setHandleAudioBecomingNoisy(pauseOnAudioDisconnect)
         .build()
         .apply {
             repeatMode = Player.REPEAT_MODE_ONE
@@ -661,6 +664,16 @@ class PlaybackService : LifecycleService() {
         _state.update { it.copy(duckOnNotifications = v) }
     }
 
+    fun setPauseOnAudioDisconnect(v: Boolean) {
+        pauseOnAudioDisconnect = v
+        AppSettings.setPauseOnAudioDisconnect(this, v)
+        // Apply live to every built player so the new behavior takes effect
+        // immediately without requiring a playback restart.
+        listOf(playerA, playerB).forEach { it.setHandleAudioBecomingNoisy(v) }
+        scenePlayers.forEach { it.setHandleAudioBecomingNoisy(v) }
+        _state.update { it.copy(pauseOnAudioDisconnect = v) }
+    }
+
     // --- Per-sound settings (Continuous / Intermittent) ---
 
     /**
@@ -732,6 +745,7 @@ class PlaybackService : LifecycleService() {
             PlaybackState(
                 appVolume = appVolume,
                 duckOnNotifications = duckOnNotifications,
+                pauseOnAudioDisconnect = pauseOnAudioDisconnect,
                 lastSession = it.lastSession,
             )
         }
@@ -1059,6 +1073,7 @@ data class PlaybackState(
     val sceneSession: SceneSession? = null,
     val appVolume: Float = 1f,
     val duckOnNotifications: Boolean = false,
+    val pauseOnAudioDisconnect: Boolean = true,
     val lastSession: LastSessionRef? = null,
 )
 

@@ -91,3 +91,7 @@ lint/tmp/
 Network Trash Folder
 Temporary Items
 .apdisk
+sounds-originals/
+
+# Local tooling state
+.claude/

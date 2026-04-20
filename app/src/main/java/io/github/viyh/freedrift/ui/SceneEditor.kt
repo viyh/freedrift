@@ -24,7 +24,14 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -212,6 +219,7 @@ fun LayerSliderBank(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun LayerColumn(
     layer: Layer,
@@ -273,15 +281,28 @@ private fun LayerColumn(
                 modifier = Modifier.height(180.dp).width(48.dp),
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                layer.displayName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.height(44.dp),
-            )
+            val tooltipState = rememberTooltipState(isPersistent = false)
+            val scope = rememberCoroutineScope()
+            TooltipBox(
+                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                tooltip = { PlainTooltip { Text(layer.displayName) } },
+                state = tooltipState,
+            ) {
+                Text(
+                    layer.displayName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .height(44.dp)
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { scope.launch { tooltipState.show() } },
+                        ),
+                )
+            }
             if (onRemove != null) {
                 IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
                     Icon(

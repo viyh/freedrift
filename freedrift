@@ -3,6 +3,7 @@
 set -euo pipefail
 
 APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+RELEASE_APK_PATH="app/build/outputs/apk/release/app-release.apk"
 PKG="io.github.viyh.freedrift"
 
 tools_up() {
@@ -19,6 +20,20 @@ tools_exec() {
 case "${1:-help}" in
   build)
     docker compose run --rm build
+    ;;
+  release)
+    # Minified + resource-shrunk release APK, signed with the shared debug key.
+    # Output: $RELEASE_APK_PATH. Use for sharing; otherwise `build` is faster.
+    docker compose run --rm build gradle --no-daemon assembleRelease
+    ls -lh "$RELEASE_APK_PATH"
+    ;;
+  release-install)
+    tools_exec adb install -r "$RELEASE_APK_PATH"
+    ;;
+  release-run)
+    docker compose run --rm build gradle --no-daemon assembleRelease
+    tools_exec adb install -r "$RELEASE_APK_PATH"
+    tools_exec adb shell am start -n "$PKG/.MainActivity"
     ;;
   pair)
     # usage: ./freedrift pair <host:port> <code>
@@ -147,9 +162,12 @@ Setup (once):
   ./freedrift connect HOST:PORT     connect to paired phone
 
 Daily:
-  ./freedrift run                   build + install + launch
-  ./freedrift build                 build APK only
-  ./freedrift install               install last-built APK
+  ./freedrift run                   build + install + launch (debug)
+  ./freedrift release-run           build + install + launch (release)
+  ./freedrift build                 build debug APK only
+  ./freedrift release               build release APK only
+  ./freedrift install               install last-built debug APK
+  ./freedrift release-install       install last-built release APK
   ./freedrift start                 launch app on device
   ./freedrift logcat-all            stream EVERYTHING (noisy, for debugging)
   ./freedrift logcat-pid            stream logs from the app process only

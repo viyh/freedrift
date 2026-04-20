@@ -17,7 +17,7 @@ object StarterScenes {
     // this one will try to add any new specs that aren't already in the user's
     // scene list (matched by scene name). User-renamed or user-deleted starter
     // scenes are left alone.
-    private const val STARTERS_VERSION = 4
+    private const val STARTERS_VERSION = 5
 
     private data class Spec(val name: String, val layers: List<LayerSpec>)
     private data class LayerSpec(val key: String, val volume: Float)
@@ -66,9 +66,9 @@ object StarterScenes {
             LayerSpec("boatmooring1", 0.40f),
         )),
         Spec("Meditation", listOf(
-            LayerSpec("singingbowlsingle", 0.50f),
+            LayerSpec("singingbowlseries", 0.50f),
             LayerSpec("suikinkutsu", 0.35f),
-            LayerSpec("windchimeshigh", 0.50f),
+            LayerSpec("windchimeshigh", 0.20f),
         )),
         Spec("Cozy Morning", listOf(
             LayerSpec("raingarden", 0.55f),
