@@ -1,102 +1,64 @@
 # FreeDrift
 
-A minimal Android sleep-sounds app. Play a loopable sound for hours, fade in/out, sleep timer. Nothing installed on your Mac except Docker.
+A minimal, ad-free Android sleep-sounds app. Plays loopable ambient sounds and multi-layer soundscapes for hours, with a sleep timer and lockscreen controls. No accounts, no ads, no tracking — nothing leaves your phone.
 
-## One-time setup
+## Features
 
-1. **Docker Desktop** installed and running.
-2. Build the Docker image + first APK:
-   ```
-   ./freedrift build
-   ```
-   First run downloads JDK, Android SDK, Gradle, etc. and takes a while. Subsequent builds are fast.
+- **Sounds** — individual loopable clips. Continuous (seamless) or intermittent mode with a tunable silent gap.
+- **Scenes** — layered soundscapes (rain + wind + distant thunder, etc.), up to 8 layers, each with its own volume slider. Tweak levels live while playing and save as a default.
+- **Playlists** — sequences of sounds or scenes with per-entry duration and crossfade.
+- **Sleep timer** — 15 / 30 / 60 / 90 minute presets or custom; fades out gently at the end.
+- **Bedside-friendly controls** — big tap-or-long-press play button, optional haptic feedback, and a "keep screen dim while playing" mode.
+- **Smart behavior** — pauses when Bluetooth or headphones disconnect, auto-resumes last session on launch, reacts to notifications with a configurable duck-or-pause.
+- **Full lockscreen and notification media controls** — play / pause respects the fade you configured.
+- **Bring your own sounds** — add `.ogg` / `.mp3` / `.flac` / `.wav` files via the system file picker.
+- **Pure-black dark UI**, designed to stay out of the way at 3 AM.
 
-3. **Add sounds.** Drop `.ogg` files into `app/src/main/assets/sounds/`. The app auto-discovers them on launch. `.opus`, `.flac`, `.mp3`, `.wav` also work, but `.ogg` Vorbis is recommended for clean seamless looping.
-   ```
-   # convert an mp3
-   ffmpeg -i rain.mp3 -c:a libvorbis -q:a 5 app/src/main/assets/sounds/rain.ogg
-   ```
+## Screenshots
 
-## Pair your phone (one-time, Wireless Debugging)
+<p>
+  <img src="docs/screenshots/02_scenes.png" width="220" alt="Scenes library">
+  <img src="docs/screenshots/09_now_playing_scene.png" width="220" alt="Now Playing: live layer mixer for a scene">
+  <img src="docs/screenshots/07_scene_detail.png" width="220" alt="Scene editor: build your own soundscape">
+  <img src="docs/screenshots/01_sounds.png" width="220" alt="Individual sounds with per-sound mode toggles">
+</p>
 
-1. Phone: `Settings → System → Developer options → Wireless debugging` → **On**.
-2. Tap "Pair device with pairing code". You'll see `IP:PORT` and a 6-digit code.
-3. On your Mac:
-   ```
-   ./freedrift pair 192.168.x.x:PAIR_PORT 123456
-   ```
-4. Back on the Wireless Debugging screen, note the *connection* `IP:PORT` (different from the pairing port):
-   ```
-   ./freedrift connect 192.168.x.x:CONN_PORT
-   ./freedrift devices   # confirm your phone shows up
-   ```
+More screens, with annotations, in the [full screenshot tour](docs/SCREENSHOTS.md).
 
-Pairing persists. On subsequent dev sessions only `./freedrift connect …` is needed (the port often changes after reboot).
+## Install
 
-## Daily dev loop
+FreeDrift isn't on Google Play. Install by sideloading the APK:
 
-```
-./freedrift run       # build + install + launch
-./freedrift logcat    # stream filtered logs
-```
+1. Grab the latest APK from the [Releases](../../releases) page.
+2. On your phone, open the downloaded file. Android will ask for permission to install from this source — allow it for your browser or files app.
+3. If Play Protect warns the app wasn't scanned, tap **Install anyway**.
 
-Other commands: `./freedrift build`, `./freedrift install`, `./freedrift start`, `./freedrift uninstall`, `./freedrift clean`, `./freedrift shell`, `./freedrift down`.
+Updates are also manual — just install the newer APK on top.
 
-## What's implemented (v0.5)
+## Privacy
 
-- Foreground playback service (survives screen lock, hours-long playback)
-- Lockscreen + notification media controls via Media3 MediaSession; play/pause from lockscreen respects fade
-- Bundled sounds from `assets/sounds/` + user-added via system file picker
-- Bottom-tab UI: **Sounds / Scenes / Playlists / Settings**, with a persistent mini-player above the tabs
-- **Expanded now-playing view** — tap the mini-player for a full view with larger controls, track progress (or live scene sliders), app-volume slider, and sleep-timer access
-- **Resume last session** — mini-player keeps the last thing you played visible after stopping; tap play to resume
-- **Sleep-timer presets** (15/30/60/90 min) plus the full slider in the timer dialog
-- Immediate pause/stop on user button press; fade-out reserved for sleep-timer expiry
-- Fade-in on play/resume
-- Track-position + sleep-timer progress indicators
-- **Playlists** with per-track duration and crossfade. **Entries can be sounds or scenes.** Sound→sound uses a true shared-player crossfade; anything involving a scene uses a parallel fade-out + fade-in with separate player pools.
-- **Scenes** — up to 8 simultaneous looping layers, each with its own vertical volume slider. Saved as named presets. Tweak levels live while playing. Service-managed audio focus so all layers coexist (no focus stealing within the app).
-- **App-level volume** — master multiplier separate from system volume, adjustable in Settings and the expanded player
-- **Duck-during-notifications** toggle (Settings) — default off (pause); on ducks to 40%
-- Configurable fade-in, crossfade, and sleep-timer fade-out durations
-- Notification + notification-permission prompt
-- Battery optimization exemption (Settings)
-- Pure-black dark theme
-
-## Not yet (roadmap)
-
-- Drag-to-reorder entries in the playlist / scene editors (currently up/down buttons)
-- Screen-dim-while-playing
-
-## Project layout
-
-```
-Dockerfile, docker-compose.yml      build environment
-freedrift                           dev workflow wrapper
-settings.gradle.kts, build.gradle.kts
-app/
-  build.gradle.kts
-  src/main/
-    AndroidManifest.xml
-    assets/sounds/                  drop your .ogg files here
-    java/io/github/viyh/freedrift/
-      FreeDriftApp.kt                 Application, notification channel
-      MainActivity.kt               Activity, service binding, permissions
-      audio/
-        PlaybackService.kt          ExoPlayer, fade, sleep timer
-        SoundSource.kt              bundled + user-file sources
-      ui/
-        HomeScreen.kt               Compose UI
-        theme/Theme.kt              black theme
-    res/                            icons, strings, themes
-```
-
-## Package name
-
-`io.github.viyh.freedrift`. To change later: search-and-replace the string across `AndroidManifest.xml`, `app/build.gradle.kts`, every `.kt` file's `package` line, and the `freedrift` script's `PKG` variable.
+- No ads, ever.
+- No tracking, analytics, or telemetry.
+- No data collected. Nothing leaves your phone.
+- No network permissions at all — the app can't talk to the internet even if it wanted to.
 
 ## License
 
-FreeDrift is free software. Copyright (C) 2026 Joe Richards. Licensed under the GNU General Public License, version 3 or later — see [LICENSE](LICENSE) for the full text.
+FreeDrift is free software, licensed under the GNU General Public License version 3 or later. See [LICENSE](LICENSE) for the full text.
 
-Bundled sounds are under their respective Creative Commons licenses; see the in-app **Settings → Sound credits** for per-clip attribution.
+Bundled sounds are under their respective Creative Commons licenses. The in-app **Settings → Sound credits** screen lists the full attribution for every clip.
+
+## Building from source
+
+The build runs entirely in containers — you only need a Docker-compatible runtime (Colima, Rancher Desktop, OrbStack, Podman with the docker shim, Docker Engine, etc.). The `freedrift` wrapper script does everything else:
+
+```
+./freedrift build          # debug APK (fast, unminified)
+./freedrift release        # release APK (minified, ~40 MB smaller)
+./freedrift run            # build + install + launch on a paired device
+./freedrift release-run    # same, but release build
+```
+
+Output APKs land in `app/build/outputs/apk/{debug,release}/`.
+
+More detail — pairing a phone, tailing logs, adding your own sounds, changing the package name, and the project layout — is in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
