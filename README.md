@@ -17,10 +17,9 @@ A minimal, ad-free Android sleep-sounds app. Plays loopable ambient sounds and m
 ## Screenshots
 
 <p>
-  <img src="docs/screenshots/02_scenes.png" width="220" alt="Scenes library">
-  <img src="docs/screenshots/09_now_playing_scene.png" width="220" alt="Now Playing: live layer mixer for a scene">
-  <img src="docs/screenshots/07_scene_detail.png" width="220" alt="Scene editor: build your own soundscape">
-  <img src="docs/screenshots/01_sounds.png" width="220" alt="Individual sounds with per-sound mode toggles">
+  <img src="docs/screenshots/02_scenes.png" width="250" alt="Scenes library">
+  <img src="docs/screenshots/09_now_playing_scene.png" width="250" alt="Now Playing: live layer mixer for a scene">
+  <img src="docs/screenshots/01_sounds.png" width="250" alt="Individual sounds with per-sound mode toggles">
 </p>
 
 More screens, with annotations, in the [full screenshot tour](docs/SCREENSHOTS.md).
